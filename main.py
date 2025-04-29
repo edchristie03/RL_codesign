@@ -1,23 +1,18 @@
 import pygame
 import pymunk
 
-pygame.init()
-display = pygame.display.set_mode((800, 800))
-clock = pygame.time.Clock()
-space = pymunk.Space()
-space.gravity = (0, -1000) # no gravity
-FPS = 60
+
 
 def convert_coordinates(point):
     return int(point.x), 800 - int(point.y)
 
 class Ball():
-    def __init__(self, radius):
+    def __init__(self, space, radius):
         self.body = pymunk.Body()      # point like object
-        self.body.position = (400, 400)
+        self.body.position = (400, 300)
         self.shape = pymunk.Circle(self.body, radius)
         self.shape.density = 0.5
-        self.shape.elasticity = 0.8
+        self.shape.elasticity = 0.5
         space.add(self.body, self.shape)
 
     def draw(self):
@@ -26,10 +21,10 @@ class Ball():
 
 
 class Floor():
-    def __init__(self, radius):
+    def __init__(self, space, radius):
         self.body = pymunk.Body(body_type=pymunk.Body.STATIC)
-        self.shape = pymunk.Segment(self.body, (0, 200), (800, 200), radius)
-        self.shape.elasticity = 0.8
+        self.shape = pymunk.Segment(self.body, (0, 50), (800, 50), radius)
+        self.shape.elasticity = 0.5
         space.add(self.body, self.shape)
 
     def draw(self):
@@ -38,15 +33,14 @@ class Floor():
         pygame.draw.line(display, (0, 0, 0), (x1, y1), (x2, y2), int(self.shape.radius * 2))
 
 class Gripper():
-    def __init__(self):
+    def __init__(self, space):
 
         # Create the base of the gripper
-        self.base = Base()
+        self.base = Base(space)
         # Create the left finger
-        self.left_finger = Finger(self.base.body.local_to_world(self.base.shape.a), self.base, side='left')
+        self.left_finger = Finger(space, self.base.body.local_to_world(self.base.shape.a), self.base, side='left')
         # Create the right finger
-        self.right_finger = Finger(self.base.body.local_to_world(self.base.shape.b), self.base, side='right')
-
+        self.right_finger = Finger(space, self.base.body.local_to_world(self.base.shape.b), self.base, side='right')
 
     def draw(self):
 
@@ -56,11 +50,10 @@ class Gripper():
         self.left_finger.draw()
         self.right_finger.draw()
 
-
 class Base():
-    def __init__(self):
-        self.body = pymunk.Body(body_type=pymunk.Body.STATIC)
-        self.body.position = (400, 600)
+    def __init__(self, space):
+        self.body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+        self.body.position = (400, 400)
         self.shape = pymunk.Segment(self.body, (-100, 0), (100, 0), 5)
         space.add(self.body, self.shape)
 
@@ -76,10 +69,10 @@ class Base():
 
 
 class Finger():
-    def __init__(self, anchor, base, side='left'):
+    def __init__(self, space, anchor, base, side='left'):
         self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)
         self.body.position = anchor
-        self.shape = pymunk.Segment(self.body, (0, 0), (0, -150), 5)
+        self.shape = pymunk.Segment(self.body, (0, 0), (0, -120), 5)
         self.shape.density = 1
         space.add(self.body, self.shape)
 
@@ -110,16 +103,18 @@ class Finger():
         pygame.draw.line(display, (0, 255, 0), (x1, y1), (x2, y2), int(self.shape.radius * 2))
 
 
-
-def game():
-    ball = Ball(30)
-    floor = Floor(10)
-    gripper = Gripper()
+def game(space):
+    ball = Ball(space, 30)
+    floor = Floor(space, 10)
+    gripper = Gripper(space)
 
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return
+
+        # Function to get action from observation
+
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT:
                     gripper.base.body.position += (-10, 0)
@@ -139,9 +134,8 @@ def game():
         # White background
         display.fill((255, 255, 255))
 
-        # Draw the ball
+        # Draw the objects
         ball.draw()
-        # Draw the floor
         floor.draw()
         gripper.draw()
 
@@ -149,8 +143,18 @@ def game():
         clock.tick(FPS)
         space.step(1/FPS)
 
-game()
-pygame.quit()
+if __name__ == "__main__":
+
+    pygame.init()
+    display = pygame.display.set_mode((800, 800))
+    clock = pygame.time.Clock()
+    space = pymunk.Space()
+    space.gravity = (0, -1000)  # gravity
+    FPS = 60
+
+    # Run the game
+    game(space)
+    pygame.quit()
 
 
 
