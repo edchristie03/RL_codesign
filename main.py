@@ -1,5 +1,6 @@
 import pygame
 import pymunk
+import numpy as np
 
 
 
@@ -9,7 +10,7 @@ def convert_coordinates(point):
 class Ball():
     def __init__(self, space, radius):
         self.body = pymunk.Body()      # point like object
-        self.body.position = (400, 300)
+        self.body.position = (400, 100)
         self.shape = pymunk.Circle(self.body, radius)
         self.shape.density = 0.5
         self.shape.elasticity = 0.5
@@ -43,7 +44,6 @@ class Gripper():
         self.right_finger = Finger(space, self.base.body.local_to_world(self.base.shape.b), self.base, side='right')
 
     def draw(self):
-
         # Draw the base
         self.base.draw()
         #Draw the fingers
@@ -53,7 +53,7 @@ class Gripper():
 class Base():
     def __init__(self, space):
         self.body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
-        self.body.position = (400, 400)
+        self.body.position = (400, 250)
         self.shape = pymunk.Segment(self.body, (-100, 0), (100, 0), 5)
         space.add(self.body, self.shape)
 
@@ -87,7 +87,7 @@ class Finger():
 
         # Create limit
         self.limit = pymunk.RotaryLimitJoint(base.body, self.body, -1, 1)
-        space.add(self.limit)
+        # space.add(self.limit)
 
         # Create motor
         self.motor = pymunk.SimpleMotor(base.body, self.body, 0)
@@ -125,11 +125,17 @@ def game(space):
                 if event.key == pygame.K_DOWN:
                     gripper.base.body.position += (0, -10)
                 if event.key == pygame.K_o:
-                    gripper.left_finger.motor.rate = 2.0
-                    gripper.right_finger.motor.rate = -2.0
+                    gripper.left_finger.body.angle -= 0.1 if gripper.left_finger.body.angle > -0.5 else 0.0
+                    gripper.right_finger.body.angle += 0.1 if gripper.left_finger.body.angle > -0.5 else 0.0
                 if event.key == pygame.K_c:
-                    gripper.left_finger.motor.rate = -2.0
-                    gripper.right_finger.motor.rate = 2.0
+                    gripper.left_finger.body.angle += 0.1 if gripper.left_finger.body.angle < 0.8 else 0.0
+                    gripper.right_finger.body.angle -= 0.1 if gripper.left_finger.body.angle < 0.8 else 0.0
+
+        r3 = - np.linalg.norm(gripper.left_finger.body.local_to_world(gripper.left_finger.shape.b) - ball.body.position)
+        r4 = - np.linalg.norm(gripper.right_finger.body.local_to_world(gripper.right_finger.shape.b) - ball.body.position)
+        r2 = ball.body.position[1]
+
+        # print("Reward:", r2+r3+r4)
 
         # White background
         display.fill((255, 255, 255))

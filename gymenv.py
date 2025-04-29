@@ -2,6 +2,7 @@ import gymnasium as gym
 from gymnasium import spaces
 from gymnasium.wrappers import RecordVideo
 from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.vec_env import VecNormalize
 import numpy as np
 import pygame
 import pymunk
@@ -20,7 +21,7 @@ class Environment(gym.Env):
     def __init__(self, render_mode=None):
         # super().__init__(render_mode=render_mode)
 
-        print("Initializing environment...")
+        # print("Initializing environment...")
 
         self.render_mode = render_mode
 
@@ -29,7 +30,7 @@ class Environment(gym.Env):
         self.clock = pygame.time.Clock()
         self.space = pymunk.Space()
         self.space.gravity = (0, -1000)  # gravity
-        self.FPS = 60
+        self.FPS = 200
 
         # Quick HACK for display. Should refactor main
         main.display = self.surface
@@ -40,20 +41,20 @@ class Environment(gym.Env):
         self.floor = Floor(self.space, radius=10)
 
         # Define action space
-        self.action_space = spaces.Discrete(6)
+        self.action_space = spaces.Discrete(7)
 
         # Define (continuous) observation space
-        high = np.array([np.inf] * 10, dtype=np.float32)
+        high = np.array([np.inf] * 8, dtype=np.float32)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # Other simulation parameters
         self.pickup_height = 400
-        self.max_steps = 1000
+        self.max_steps = 250
         self.current_step = 0
 
     def reset(self, seed=None, options=None):
 
-        print("Resetting environment...")
+        # print("Resetting environment...")
 
         # comply with Gym API: accept seed and options
         super().reset(seed=seed)
@@ -76,12 +77,12 @@ class Environment(gym.Env):
 
     def step(self, action):
 
-        print("Action taken this step:", action)
+        # print("Action taken this step:", action)
 
         pygame.event.pump()
-        # Map discrete action to motion or gripper command
         dx = dy = 0
-        grip_rate = 0.0
+        rotation = 0.0
+
         if action == 0:     # Move left
             dx = -1
         elif action == 1:   # Move right
@@ -91,14 +92,16 @@ class Environment(gym.Env):
         elif action == 3:   # Move down
             dy = -1
         elif action == 4:   # Open gripper
-            grip_rate = 2.0
+            rotation = 0.1 if self.gripper.left_finger.body.angle > -0.5 else 0.0
         elif action == 5:   # Close gripper
-            grip_rate = -2.0
+            rotation = -0.1 if self.gripper.left_finger.body.angle < 0.8 else 0.0
+        elif action == 6:   # Do nothing
+            None
 
         # Apply the action to the gripper
         self.gripper.base.body.position += (dx, dy)
-        self.gripper.left_finger.motor.rate = grip_rate
-        self.gripper.right_finger.motor.rate = -grip_rate
+        self.gripper.left_finger.body.angle -= rotation
+        self.gripper.right_finger.body.angle += rotation
 
         # Step the simulation
         self.space.step(1/self.FPS)
@@ -117,11 +120,11 @@ class Environment(gym.Env):
 
     def get_observation(self):
 
-        print("Getting observation...")
+        # print("Getting observation...")
 
         # Base position and velocity
         bx, by = self.gripper.base.body.position
-        bvx, bvy = self.gripper.base.body.velocity
+        # bvx, bvy = self.gripper.base.body.velocity
 
         # Gripper angles and angular velocities
         left = self.gripper.left_finger.body
@@ -133,37 +136,48 @@ class Environment(gym.Env):
         ball = self.ball.body
         rel_pos = ball.position - self.gripper.base.body.position
 
-        obs = np.array([bx, by, bvx, bvy, la, lav, ra, rav, rel_pos.x, rel_pos.y], dtype=np.float32)
+        obs = np.array([bx, by, la, lav, ra, rav, rel_pos.x, rel_pos.y], dtype=np.float32)
+
         return obs
 
     def get_reward(self, obs):
-        # Reward based on the distance of gripper base to the ball
-        r1 = - np.linalg.norm(obs[8:10])
+
+        r1 = - np.linalg.norm(obs[6:8])
 
         # Reward based on height of ball
         r2 = self.ball.body.position[1]
 
-        print(f'r1: {r1}, r2: {r2}')
+        # Reward based on distance of left finger tip to the ball
+        r3 = - np.linalg.norm(self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b) - self.ball.body.position)
 
-        reward = r1 + r2
+        # Reward based on distance of right finger tip to the ball
+        r4 = - np.linalg.norm(self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b) - self.ball.body.position)
+
+        reward =  r1
+
+        # print(f"Reward: {reward:.2f} (r1: {r1:.2f}, r3: {r3:.2f}, r4: {r4:.2f})")
+
         done = False
 
         # Reward based on success
         if self.ball.body.position.y > self.pickup_height:
-            reward += 10.0
+            reward += 1000000
             done = True
 
         # Episode termination if max steps reached
         if self.current_step >= self.max_steps:
             done = True
 
-        print("Reward:", reward)
+        # End if left finger tip is below the floor
+        if self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b)[1] < self.floor.shape.a[1] - 10:
+            # reward -= 1000000
+            done = True
 
         return reward, done
 
     def render(self, mode="human"):
 
-        print("Rendering...")
+        # print("Rendering...")
 
         # draw physics into your off-screen self.surface
         self.surface.fill((255, 255, 255))
@@ -176,7 +190,7 @@ class Environment(gym.Env):
             if not hasattr(self, "_window"):
                 pygame.display.init()
                 self._window = pygame.display.set_mode((800, 800))
-            # pump events again (optional)
+            # pump to not fill up memory
             pygame.event.pump()
             # blit & flip
             self._window.blit(self.surface, (0, 0))
@@ -189,43 +203,61 @@ class Environment(gym.Env):
 
 if __name__ == "__main__":
 
-    # def make_env():
-    #     env = Environment()
-    #     return Monitor(env)
-    #
-    # vec_env = DummyVecEnv([make_env])
-    # model = PPO("MlpPolicy", vec_env, verbose=0, tensorboard_log="./ppo_gripper_tensorboard/")
-    # model.learn(total_timesteps=100000)
-    # model.save("ppo_pymunk_gripper")
-    # print("Training complete and model saved.")
-
     # Training env (headless)
     train_env = DummyVecEnv([lambda: Monitor(Environment(render_mode=None))])
+    train_env = VecNormalize(train_env, norm_obs=True, norm_reward=False)
 
     # Evaluation env (human‐render)
-    eval_env = DummyVecEnv([lambda: Environment(render_mode="human")])
+    eval_env = DummyVecEnv([lambda: Monitor(Environment(render_mode="human"))])
+    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False)
 
-    # Make callback to run 1 episode of eval every 1000 episodes
+    # Make callback to run 1 episode of eval every 250000 steps
     eval_callback = EvalCallback(
         eval_env,
         n_eval_episodes=1,
-        eval_freq=20000,
-        render=True,  # actually calls env.render("human")
-        verbose=1
-    )
+        eval_freq=10000,
+        render=True,
+        verbose=0)
+
+    policy_kwargs = dict(
+        net_arch=[128, 128])
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
         "MlpPolicy",
         train_env,
-        verbose=1,
-        tensorboard_log="./ppo_gripper_tensorboard/"
+        verbose=0,
+        tensorboard_log="./ppo_gripper_tensorboard/",
+        policy_kwargs=policy_kwargs,
+        ent_coef=0.5,
     )
-    model.learn(
-        total_timesteps=100_0000,
-        callback=eval_callback
-    )
+
+    model.learn(total_timesteps=500000, callback=eval_callback)
     model.save("ppo_pymunk_gripper")
+    print("Training complete and model saved.")
+
+    # 1Load the trained policy
+    model = PPO.load("ppo_pymunk_gripper")
+
+    # Create a fresh env in human‐render mode
+    test_env = Environment(render_mode="human")
+
+    # Run N test episodes
+    N = 10
+    for ep in range(1, N + 1):
+        obs, info = test_env.reset()
+        done = False
+        total_reward = 0.0
+        print(f"Starting test episode {ep}")
+        while not done:
+            # deterministic=True for consistent playback
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, done, truncated, info = test_env.step(action)
+            total_reward += reward
+            test_env.render()  # pops up the Pygame window and draws each frame
+        print(f"Episode {ep} finished with total reward {total_reward:.2f}")
+
+    test_env.close()
 
 
 
