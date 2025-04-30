@@ -1,3 +1,6 @@
 .venv
 .idea
 __pycache__
+
+ppo_gripper_tensorboard/
+ppo_pymunk_gripper.zip

@@ -153,7 +153,7 @@ class Environment(gym.Env):
         # Reward based on distance of right finger tip to the ball
         r4 = - np.linalg.norm(self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b) - self.ball.body.position)
 
-        reward =  r1
+        reward =  r3 + r4 + r2
 
         # print(f"Reward: {reward:.2f} (r1: {r1:.2f}, r3: {r3:.2f}, r4: {r4:.2f})")
 
@@ -229,7 +229,7 @@ if __name__ == "__main__":
         verbose=0,
         tensorboard_log="./ppo_gripper_tensorboard/",
         policy_kwargs=policy_kwargs,
-        ent_coef=0.5,
+        ent_coef=0.03,
     )
 
     model.learn(total_timesteps=500000, callback=eval_callback)
