@@ -1,13 +1,14 @@
-import gymnasium as gym
-from gymnasium import spaces
-from gymnasium.wrappers import RecordVideo
-from stable_baselines3.common.callbacks import EvalCallback
-from stable_baselines3.common.vec_env import VecNormalize
 import numpy as np
 import pygame
 import pymunk
+
+import gymnasium as gym
+from gymnasium import spaces
+from gymnasium.wrappers import RecordVideo
+
+from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
 
 from main import Gripper, Ball, Floor
@@ -38,7 +39,7 @@ class Environment(gym.Env):
         # Define objects in the environment
         self.gripper = Gripper(self.space)
         self.ball = Ball(self.space, radius=30)
-        self.floor = Floor(self.space, radius=10)
+        self.floor = Floor(self.space, radius=20)
 
         # Define action space
         self.action_space = spaces.Discrete(7)
@@ -48,8 +49,8 @@ class Environment(gym.Env):
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # Other simulation parameters
-        self.pickup_height = 400
-        self.max_steps = 250
+        self.pickup_height = 600
+        self.max_steps = 400
         self.current_step = 0
 
     def reset(self, seed=None, options=None):
@@ -209,18 +210,16 @@ if __name__ == "__main__":
 
     # Evaluation env (human‐render)
     eval_env = DummyVecEnv([lambda: Monitor(Environment(render_mode="human"))])
-    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False)
+    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, training=False)
 
-    # Make callback to run 1 episode of eval every 250000 steps
-    eval_callback = EvalCallback(
-        eval_env,
-        n_eval_episodes=1,
-        eval_freq=10000,
-        render=True,
-        verbose=0)
+    # Copy the running mean/var from the training env:
+    eval_env.obs_rms = train_env.obs_rms
 
-    policy_kwargs = dict(
-        net_arch=[128, 128])
+    # Make callback to run 1 episode every eval_freq steps
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000, render=True, verbose=0, deterministic=True)
+
+    # Define the policy network architecture
+    policy_kwargs = dict(net_arch=[128, 128])
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
@@ -234,30 +233,10 @@ if __name__ == "__main__":
 
     model.learn(total_timesteps=500000, callback=eval_callback)
     model.save("ppo_pymunk_gripper")
+    train_env.save("vecnormalize_stats.pkl")
     print("Training complete and model saved.")
 
-    # 1Load the trained policy
-    model = PPO.load("ppo_pymunk_gripper")
 
-    # Create a fresh env in human‐render mode
-    test_env = Environment(render_mode="human")
-
-    # Run N test episodes
-    N = 10
-    for ep in range(1, N + 1):
-        obs, info = test_env.reset()
-        done = False
-        total_reward = 0.0
-        print(f"Starting test episode {ep}")
-        while not done:
-            # deterministic=True for consistent playback
-            action, _ = model.predict(obs, deterministic=True)
-            obs, reward, done, truncated, info = test_env.step(action)
-            total_reward += reward
-            test_env.render()  # pops up the Pygame window and draws each frame
-        print(f"Episode {ep} finished with total reward {total_reward:.2f}")
-
-    test_env.close()
 
 
 

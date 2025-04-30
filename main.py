@@ -1,15 +1,14 @@
 import pygame
 import pymunk
 import numpy as np
-
-
+import math
 
 def convert_coordinates(point):
     return int(point.x), 800 - int(point.y)
 
 class Ball():
     def __init__(self, space, radius):
-        self.body = pymunk.Body()      # point like object
+        self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)      # point like object
         self.body.position = (400, 100)
         self.shape = pymunk.Circle(self.body, radius)
         self.shape.density = 0.5
@@ -19,7 +18,6 @@ class Ball():
     def draw(self):
         x, y = convert_coordinates(self.body.position)
         pygame.draw.circle(display, (0, 0, 255), (int(x), int(y)), int(self.shape.radius))
-
 
 class Floor():
     def __init__(self, space, radius):
@@ -38,17 +36,37 @@ class Gripper():
 
         # Create the base of the gripper
         self.base = Base(space)
+        # Create the arm
+        self.arm = Arm(space, self.base)
         # Create the left finger
         self.left_finger = Finger(space, self.base.body.local_to_world(self.base.shape.a), self.base, side='left')
         # Create the right finger
         self.right_finger = Finger(space, self.base.body.local_to_world(self.base.shape.b), self.base, side='right')
 
     def draw(self):
-        # Draw the base
+        # Draw
+        self.arm.draw()
         self.base.draw()
-        #Draw the fingers
         self.left_finger.draw()
         self.right_finger.draw()
+
+class Arm():
+    def __init__(self, space, base):
+        self.body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+        self.body.position = base.body.position
+        self.shape = pymunk.Segment(self.body, (0, 0), (0, 150), 5)
+        space.add(self.body, self.shape)
+
+
+    def draw(self):
+        # Transform local endpoints into world-space
+        world_a = self.body.local_to_world(self.shape.a)
+        world_b = self.body.local_to_world(self.shape.b)
+        # Then convert to Pygame coordinates
+        x1, y1 = convert_coordinates(world_a)
+        x2, y2 = convert_coordinates(world_b)
+        # Draw the line
+        pygame.draw.line(display, (0, 255, 0), (x1, y1), (x2, y2), int(self.shape.radius * 2))
 
 class Base():
     def __init__(self, space):
@@ -105,7 +123,7 @@ class Finger():
 
 def game(space):
     ball = Ball(space, 30)
-    floor = Floor(space, 10)
+    floor = Floor(space, 20)
     gripper = Gripper(space)
 
     while True:
@@ -117,25 +135,23 @@ def game(space):
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT:
-                    gripper.base.body.position += (-10, 0)
+                    # gripper.base.body.position += (-5, 0)
+                    gripper.base.body.velocity = (-200, 0)
                 if event.key == pygame.K_RIGHT:
-                    gripper.base.body.position += (10, 0)
+                    # gripper.base.body.position += (5, 0)
+                    gripper.base.body.velocity = (200, 0)
                 if event.key == pygame.K_UP:
-                    gripper.base.body.position += (0, 10)
+                    # gripper.base.body.position += (0, 5)
+                    gripper.base.body.velocity = (0, 200)
                 if event.key == pygame.K_DOWN:
-                    gripper.base.body.position += (0, -10)
+                    # gripper.base.body.position += (0, -5)
+                    gripper.base.body.velocity = (0, -200)
                 if event.key == pygame.K_o:
                     gripper.left_finger.body.angle -= 0.1 if gripper.left_finger.body.angle > -0.5 else 0.0
                     gripper.right_finger.body.angle += 0.1 if gripper.left_finger.body.angle > -0.5 else 0.0
                 if event.key == pygame.K_c:
                     gripper.left_finger.body.angle += 0.1 if gripper.left_finger.body.angle < 0.8 else 0.0
                     gripper.right_finger.body.angle -= 0.1 if gripper.left_finger.body.angle < 0.8 else 0.0
-
-        r3 = - np.linalg.norm(gripper.left_finger.body.local_to_world(gripper.left_finger.shape.b) - ball.body.position)
-        r4 = - np.linalg.norm(gripper.right_finger.body.local_to_world(gripper.right_finger.shape.b) - ball.body.position)
-        r2 = ball.body.position[1]
-
-        # print("Reward:", r2+r3+r4)
 
         # White background
         display.fill((255, 255, 255))
@@ -148,6 +164,9 @@ def game(space):
         pygame.display.update()
         clock.tick(FPS)
         space.step(1/FPS)
+        space.reindex_shape(gripper.base.shape)
+        space.reindex_static()
+        gripper.base.body.velocity = (0, 0)
 
 if __name__ == "__main__":
 
