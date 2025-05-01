@@ -38,8 +38,8 @@ class Environment(gym.Env):
 
         # Define objects in the environment
         self.gripper = Gripper(self.space)
-        self.ball = Ball(self.space, radius=30)
-        self.floor = Floor(self.space, radius=20)
+        self.ball = Ball(self.space, 30)
+        self.floor = Floor(self.space, 20)
 
         # Define action space
         self.action_space = spaces.Discrete(7)
@@ -67,7 +67,7 @@ class Environment(gym.Env):
         # Recreate the objects
         self.gripper = Gripper(self.space)
         self.ball = Ball(self.space, radius=30)
-        self.floor = Floor(self.space, radius=10)
+        self.floor = Floor(self.space, radius=20)
         self.current_step = 0
 
         # initial observation and info
@@ -85,27 +85,28 @@ class Environment(gym.Env):
         rotation = 0.0
 
         if action == 0:     # Move left
-            dx = -1
+            dx = -100
         elif action == 1:   # Move right
-            dx = 1
+            dx = 100
         elif action == 2:   # Move up
-            dy = 1
+            dy = 100
         elif action == 3:   # Move down
-            dy = -1
+            dy = -100
         elif action == 4:   # Open gripper
             rotation = 0.1 if self.gripper.left_finger.body.angle > -0.5 else 0.0
         elif action == 5:   # Close gripper
-            rotation = -0.1 if self.gripper.left_finger.body.angle < 0.8 else 0.0
+            rotation = -0.1 if self.gripper.left_finger.body.angle < 1 else 0.0
         elif action == 6:   # Do nothing
             None
 
         # Apply the action to the gripper
-        self.gripper.base.body.position += (dx, dy)
+        self.gripper.arm.body.velocity = (dx, dy)
         self.gripper.left_finger.body.angle -= rotation
         self.gripper.right_finger.body.angle += rotation
 
         # Step the simulation
         self.space.step(1/self.FPS)
+
         self.current_step += 1
 
         # Get the observation
@@ -113,6 +114,8 @@ class Environment(gym.Env):
 
         # Get the reward
         reward, done = self.get_reward(observation)
+
+        self.gripper.arm.body.velocity = (0, 0)
 
         truncated = False
         info = {}
@@ -123,9 +126,8 @@ class Environment(gym.Env):
 
         # print("Getting observation...")
 
-        # Base position and velocity
+        # Base position
         bx, by = self.gripper.base.body.position
-        # bvx, bvy = self.gripper.base.body.velocity
 
         # Gripper angles and angular velocities
         left = self.gripper.left_finger.body
@@ -146,7 +148,7 @@ class Environment(gym.Env):
         r1 = - np.linalg.norm(obs[6:8])
 
         # Reward based on height of ball
-        r2 = self.ball.body.position[1]
+        r2 = self.ball.body.position[1] - 100 if self.gripper.arm.body.velocity[1] > 0 else 0
 
         # Reward based on distance of left finger tip to the ball
         r3 = - np.linalg.norm(self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b) - self.ball.body.position)

@@ -57,6 +57,14 @@ class Arm():
         self.shape = pymunk.Segment(self.body, (0, 0), (0, 150), 5)
         space.add(self.body, self.shape)
 
+        self.joint = pymunk.PivotJoint(self.body, base.body, base.body.position)
+        self.joint.collide_bodies = False
+        space.add(self.joint)
+
+        # Create limit
+        self.limit = pymunk.RotaryLimitJoint(base.body, self.body, 0, 0)
+        space.add(self.limit)
+
 
     def draw(self):
         # Transform local endpoints into world-space
@@ -70,9 +78,10 @@ class Arm():
 
 class Base():
     def __init__(self, space):
-        self.body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+        self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)
         self.body.position = (400, 250)
         self.shape = pymunk.Segment(self.body, (-100, 0), (100, 0), 5)
+        self.shape.density = 1
         space.add(self.body, self.shape)
 
     def draw(self):
@@ -105,11 +114,11 @@ class Finger():
 
         # Create limit
         self.limit = pymunk.RotaryLimitJoint(base.body, self.body, -1, 1)
-        # space.add(self.limit)
+        space.add(self.limit)
 
         # Create motor
         self.motor = pymunk.SimpleMotor(base.body, self.body, 0)
-        self.motor.max_force = 5e8
+        self.motor.max_force = 5e20
         space.add(self.motor)
 
     def draw(self):
@@ -135,23 +144,19 @@ def game(space):
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT:
-                    # gripper.base.body.position += (-5, 0)
-                    gripper.base.body.velocity = (-200, 0)
+                    gripper.arm.body.velocity = (-200, 0)
                 if event.key == pygame.K_RIGHT:
-                    # gripper.base.body.position += (5, 0)
-                    gripper.base.body.velocity = (200, 0)
+                    gripper.arm.body.velocity = (200, 0)
                 if event.key == pygame.K_UP:
-                    # gripper.base.body.position += (0, 5)
-                    gripper.base.body.velocity = (0, 200)
+                    gripper.arm.body.velocity = (0, 200)
                 if event.key == pygame.K_DOWN:
-                    # gripper.base.body.position += (0, -5)
-                    gripper.base.body.velocity = (0, -200)
+                    gripper.arm.body.velocity = (0, -200)
                 if event.key == pygame.K_o:
                     gripper.left_finger.body.angle -= 0.1 if gripper.left_finger.body.angle > -0.5 else 0.0
                     gripper.right_finger.body.angle += 0.1 if gripper.left_finger.body.angle > -0.5 else 0.0
                 if event.key == pygame.K_c:
-                    gripper.left_finger.body.angle += 0.1 if gripper.left_finger.body.angle < 0.8 else 0.0
-                    gripper.right_finger.body.angle -= 0.1 if gripper.left_finger.body.angle < 0.8 else 0.0
+                    gripper.left_finger.body.angle += 0.1 if gripper.left_finger.body.angle < 1 else 0.0
+                    gripper.right_finger.body.angle -= 0.1 if gripper.left_finger.body.angle < 1 else 0.0
 
         # White background
         display.fill((255, 255, 255))
@@ -164,9 +169,8 @@ def game(space):
         pygame.display.update()
         clock.tick(FPS)
         space.step(1/FPS)
-        space.reindex_shape(gripper.base.shape)
-        space.reindex_static()
-        gripper.base.body.velocity = (0, 0)
+        gripper.arm.body.velocity = (0, 0)
+
 
 if __name__ == "__main__":
 
