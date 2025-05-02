@@ -158,6 +158,7 @@ def game(space):
                     gripper.left_finger.body.angle += 0.1 if gripper.left_finger.body.angle < 1 else 0.0
                     gripper.right_finger.body.angle -= 0.1 if gripper.left_finger.body.angle < 1 else 0.0
 
+
         # White background
         display.fill((255, 255, 255))
 
