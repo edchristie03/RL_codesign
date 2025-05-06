@@ -9,15 +9,12 @@ from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 
-from main import Gripper, Ball, Floor
+from main import Gripper, Ball, Floor, Poly
 import main
 
 class Environment(gym.Env):
 
-    metadata = {"render_modes": ["human"],
-                "render_fps": 60}
-
-    def __init__(self, render_mode=None):
+    def __init__(self, vertex, render_mode=None):
 
         self.render_mode = render_mode
 
@@ -34,8 +31,12 @@ class Environment(gym.Env):
         # Define objects in the environment
         self.gripper = Gripper(self.space)
         self.floor = Floor(self.space, 20)
+        self.vertex = vertex
 
-        self.ball = Ball(self.space, 30)
+        if self.vertex:
+            self.object = Poly(self.space, self.vertex)
+        else:
+            self.object = Ball(self.space, 30)
 
         # Define action space
         self.action_space = spaces.Discrete(7)
@@ -60,8 +61,13 @@ class Environment(gym.Env):
 
         # Recreate the objects
         self.gripper = Gripper(self.space)
-        self.ball = Ball(self.space, radius=30)
         self.floor = Floor(self.space, radius=20)
+
+        if self.vertex:
+            self.object = Poly(self.space, self.vertex)
+        else:
+            self.object = Ball(self.space, 30)
+
         self.current_step = 0
 
         # initial observation and info
@@ -128,9 +134,9 @@ class Environment(gym.Env):
         la, lav = left.angle, left.angular_velocity
         ra, rav = right.angle, right.angular_velocity
 
-        # Ball relative position
-        ball = self.ball.body
-        rel_pos = ball.position - self.gripper.base.body.position
+        # Object relative position
+        object = self.object.body
+        rel_pos = object.position - self.gripper.base.body.position
 
         obs = np.array([bx, by, la, lav, ra, rav, rel_pos.x, rel_pos.y], dtype=np.float32)
 
@@ -138,21 +144,21 @@ class Environment(gym.Env):
 
     def get_reward(self, obs):
 
-        # Reward based on height of ball if gripper is moving up as well
-        r2 = self.ball.body.position[1] - 100 if self.gripper.arm.body.velocity[1] > 0 else 0
+        # Reward based on height of object if gripper is moving up as well
+        r2 = self.object.body.position[1] - 100 if self.gripper.arm.body.velocity[1] > 0 else 0
 
-        # Reward based on distance of left finger tip to the ball bottom
-        r3 = - np.linalg.norm(self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b) - (self.ball.body.position - (0, self.ball.shape.radius)))
+        # Reward based on distance of left finger tip to the object bottom
+        r3 = - np.linalg.norm(self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b) - (self.object.body.position - (0, self.object.shape.radius)))
 
-        # Reward based on distance of right finger tip to the ball bottom
-        r4 = - np.linalg.norm(self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b) - (self.ball.body.position - (0, self.ball.shape.radius)))
+        # Reward based on distance of right finger tip to the object bottom
+        r4 = - np.linalg.norm(self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b) - (self.object.body.position - (0, self.object.shape.radius)))
 
         reward = r2  + r3 + r4
 
         done = False
 
         # Reward based on success
-        if self.ball.body.position.y > self.pickup_height and self.gripper.base.body.position.y > self.pickup_height:
+        if self.object.body.position.y > self.pickup_height and self.gripper.base.body.position.y > self.pickup_height:
             reward += 50
             print("Success!")
             done = True
@@ -165,8 +171,8 @@ class Environment(gym.Env):
         if self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b)[1] < self.floor.shape.a[1] - 10:
             done = True
 
-        # End if ball is below the floor
-        if self.ball.body.position.y < self.floor.shape.a[1] - 10:
+        # End if object is below the floor
+        if self.object.body.position.y < self.floor.shape.a[1] - 10:
             done = True
 
         return reward, done
@@ -175,7 +181,7 @@ class Environment(gym.Env):
 
         # draw physics into your off-screen self.surface
         self.surface.fill((255, 255, 255))
-        self.ball.draw()
+        self.object.draw()
         self.floor.draw()
         self.gripper.draw()
 
@@ -197,19 +203,22 @@ class Environment(gym.Env):
 
 if __name__ == "__main__":
 
+    # This determines the shape of the object to be picked up. If empty, a ball is created.
+    vertex = [(-25, 0), (25, 0), (25, 50), (-25, 50)]
+
     # Training env (headless)
-    train_env = DummyVecEnv([lambda: Monitor(Environment(render_mode=None))])
+    train_env = DummyVecEnv([lambda: Monitor(Environment(vertex, render_mode=None))])
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True)
 
     # Evaluation env (human‐render)
-    eval_env = DummyVecEnv([lambda: Monitor(Environment(render_mode="human"))])
+    eval_env = DummyVecEnv([lambda: Monitor(Environment(vertex, render_mode="human"))])
     eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=True, training=False)
 
     # Copy the running mean/var from the training env:
     eval_env.obs_rms = train_env.obs_rms
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=50000, render=True, verbose=0, deterministic=False)
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000, render=True, verbose=0, deterministic=False)
 
     # Define the policy network architecture
     policy_kwargs = dict(net_arch=[256, 256])
@@ -225,8 +234,8 @@ if __name__ == "__main__":
     )
 
     model.learn(total_timesteps=1000000, callback=eval_callback)
-    model.save("ppo_pymunk_gripper")
-    train_env.save("vecnormalize_stats.pkl")
+    model.save("models/ppo_pymunk_gripper")
+    train_env.save("normalise_stats/vecnormalize_stats.pkl")
     print("Training complete and model saved.")
 
 

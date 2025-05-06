@@ -1,13 +1,15 @@
 from stable_baselines3 import PPO
-from training import Environment
+from environment import Environment
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
+vertex = []
+
 # 1Load the trained policy
-model = PPO.load("ppo_pymunk_gripper")
+model = PPO.load("models/ppo_pymunk_gripper")
 
 # Create a fresh env in human‐render mode
-test_env = DummyVecEnv([lambda: Environment(render_mode="human")])
-test_env = VecNormalize.load("vecnormalize_stats.pkl", test_env)
+test_env = DummyVecEnv([lambda: Environment(vertex, render_mode="human")])
+test_env = VecNormalize.load("normalise_stats/vecnormalize_stats.pkl", test_env)
 test_env.training = False        # freeze stats, use them consistently
 
 # Run N test episodes

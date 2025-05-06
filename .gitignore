@@ -5,3 +5,6 @@ __pycache__
 ppo_gripper_tensorboard/
 ppo_pymunk_gripper.zip
 vecnormalize_stats.pkl
+
+models/
+normalise_stats/

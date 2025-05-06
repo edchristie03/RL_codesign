@@ -36,7 +36,7 @@ class Poly():
         verts_world = [v.rotated(self.body.angle) + self.body.position for v in self.shape.get_vertices()]
         # Then convert to Pygame coordinates
         verts_screen = [convert_coordinates(v) for v in verts_world]
-        pygame.draw.polygon(display, (0, 255, 0), verts_screen)
+        pygame.draw.polygon(display, (0, 0, 255), verts_screen)
 
 class Floor():
     def __init__(self, space, radius):
@@ -178,6 +178,9 @@ def game(space, object):
                     gripper.left_finger.body.angle += 0.1 if gripper.left_finger.body.angle < 1 else 0.0
                     gripper.right_finger.body.angle -= 0.1 if gripper.left_finger.body.angle < 1 else 0.0
 
+        # Reward based on height of object if gripper is moving up as well
+        r2 = object.body.position[1] - 100 if gripper.arm.body.velocity[1] > 0 else 0
+        print("Reward based on height of object:", r2)
 
         # White background
         display.fill((255, 255, 255))
