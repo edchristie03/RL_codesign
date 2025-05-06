@@ -13,17 +13,37 @@ class Ball():
         self.shape = pymunk.Circle(self.body, radius)
         self.shape.density = 0.5
         self.shape.elasticity = 0.5
+        self.shape.friction = 1
+        self.body.angular_damping = 0.1
         space.add(self.body, self.shape)
 
     def draw(self):
         x, y = convert_coordinates(self.body.position)
         pygame.draw.circle(display, (0, 0, 255), (int(x), int(y)), int(self.shape.radius))
 
+class Poly():
+    def __init__(self, space, vertices):
+        self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)
+        self.body.position = (400, 100)
+        self.shape = pymunk.Poly(self.body, vertices)
+        self.shape.density = 0.5
+        self.shape.elasticity = 0.5
+        self.shape.friction = 0.5
+        space.add(self.body, self.shape)
+
+    def draw(self):
+        # Transform local vertices into world-space
+        verts_world = [v.rotated(self.body.angle) + self.body.position for v in self.shape.get_vertices()]
+        # Then convert to Pygame coordinates
+        verts_screen = [convert_coordinates(v) for v in verts_world]
+        pygame.draw.polygon(display, (0, 255, 0), verts_screen)
+
 class Floor():
     def __init__(self, space, radius):
         self.body = pymunk.Body(body_type=pymunk.Body.STATIC)
         self.shape = pymunk.Segment(self.body, (0, 50), (800, 50), radius)
         self.shape.elasticity = 0.5
+        self.shape.friction = 1
         space.add(self.body, self.shape)
 
     def draw(self):
@@ -94,7 +114,6 @@ class Base():
         # Draw the line
         pygame.draw.line(display, (255, 0, 0), (x1, y1), (x2, y2), int(self.shape.radius * 2))
 
-
 class Finger():
     def __init__(self, space, anchor, base, side='left'):
         self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)
@@ -130,8 +149,9 @@ class Finger():
         pygame.draw.line(display, (0, 255, 0), (x1, y1), (x2, y2), int(self.shape.radius * 2))
 
 
-def game(space):
-    ball = Ball(space, 30)
+def game(space, object):
+    # ball = Ball(space, 30)
+    # poly = Poly(space, [(0, 0), (50, 0), (50, 50), (0, 50)])
     floor = Floor(space, 20)
     gripper = Gripper(space)
 
@@ -163,7 +183,9 @@ def game(space):
         display.fill((255, 255, 255))
 
         # Draw the objects
-        ball.draw()
+        # ball.draw()
+        # poly.draw()
+        object.draw()
         floor.draw()
         gripper.draw()
 
@@ -175,16 +197,32 @@ def game(space):
 
 if __name__ == "__main__":
 
-    pygame.init()
-    display = pygame.display.set_mode((800, 800))
-    clock = pygame.time.Clock()
-    space = pymunk.Space()
-    space.gravity = (0, -1000)  # gravity
-    FPS = 60
+    vertices = [[], [(-25, 0), (25, 0), (25, 50), (-25, 50)] ,[(-25, 0), (25, 0), (25, 50)], [(-25, 0), (25, 0), (0, 50)]]
 
-    # Run the game
-    game(space)
-    pygame.quit()
+    for vertex in vertices:
+
+        pygame.init()
+        display = pygame.display.set_mode((800, 800))
+        clock = pygame.time.Clock()
+        space = pymunk.Space()
+        space.gravity = (0, -1000)  # gravity
+        FPS = 60
+
+        if vertex:
+            object = Poly(space, vertex)
+        else:
+            object = Ball(space, 30)
+
+        game(space, object)
+        pygame.quit()
+
+
+
+
+
+    # # Run the game
+    # game(space)
+    # pygame.quit()
 
 
 

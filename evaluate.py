@@ -1,5 +1,5 @@
 from stable_baselines3 import PPO
-from gymenv import Environment
+from training import Environment
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 # 1Load the trained policy

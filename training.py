@@ -4,8 +4,6 @@ import pymunk
 
 import gymnasium as gym
 from gymnasium import spaces
-from gymnasium.wrappers import RecordVideo
-
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 from stable_baselines3 import PPO
@@ -35,8 +33,9 @@ class Environment(gym.Env):
 
         # Define objects in the environment
         self.gripper = Gripper(self.space)
-        self.ball = Ball(self.space, 30)
         self.floor = Floor(self.space, 20)
+
+        self.ball = Ball(self.space, 30)
 
         # Define action space
         self.action_space = spaces.Discrete(7)
@@ -46,8 +45,8 @@ class Environment(gym.Env):
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # Other simulation parameters
-        self.pickup_height = 600
-        self.max_steps = 400
+        self.pickup_height = 400
+        self.max_steps = 500
         self.current_step = 0
 
     def reset(self, seed=None, options=None):
@@ -69,7 +68,6 @@ class Environment(gym.Env):
         obs = self.get_observation()
         info = {}
         return obs, info
-
 
     def step(self, action):
 
@@ -140,7 +138,7 @@ class Environment(gym.Env):
 
     def get_reward(self, obs):
 
-        # Reward based on height of ball
+        # Reward based on height of ball if gripper is moving up as well
         r2 = self.ball.body.position[1] - 100 if self.gripper.arm.body.velocity[1] > 0 else 0
 
         # Reward based on distance of left finger tip to the ball bottom
@@ -149,7 +147,7 @@ class Environment(gym.Env):
         # Reward based on distance of right finger tip to the ball bottom
         r4 = - np.linalg.norm(self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b) - (self.ball.body.position - (0, self.ball.shape.radius)))
 
-        reward = r2 + r3 + r4
+        reward = r2  + r3 + r4
 
         done = False
 
@@ -165,6 +163,10 @@ class Environment(gym.Env):
 
         # End if left finger tip is below the floor
         if self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b)[1] < self.floor.shape.a[1] - 10:
+            done = True
+
+        # End if ball is below the floor
+        if self.ball.body.position.y < self.floor.shape.a[1] - 10:
             done = True
 
         return reward, done
