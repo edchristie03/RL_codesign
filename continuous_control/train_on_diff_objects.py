@@ -4,7 +4,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from environment import Environment
 
-vertices = [[], [(-25, 0), (25, 0), (25, 50), (-25, 50)] ,[(-25, 0), (25, 0), (25, 50)], [(-25, 0), (25, 0), (0, 50)]]
+vertices = [[], [(-30, -30), (30, -30), (30, 30), (-30, 30)] ,[(-30, -30), (30, -30), (30, 30)], [(-30, -30), (30, -30), (0, 30)]]
 
 for idx, vertex in enumerate(vertices):
 

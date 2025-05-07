@@ -25,7 +25,7 @@ class Poly():
     def __init__(self, space, vertices):
         self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)
         self.body.position = (400, 100)
-        self.shape = pymunk.Poly(self.body, vertices)
+        self.shape = pymunk.Poly(self.body, vertices, radius=0)
         self.shape.density = 0.5
         self.shape.elasticity = 0.5
         self.shape.friction = 0.5
@@ -178,10 +178,6 @@ def game(space, object):
                     gripper.left_finger.body.angle += 0.1 if gripper.left_finger.body.angle < 1 else 0.0
                     gripper.right_finger.body.angle -= 0.1 if gripper.left_finger.body.angle < 1 else 0.0
 
-        # Reward based on height of object if gripper is moving up as well
-        r2 = object.body.position[1] - 100 if gripper.arm.body.velocity[1] > 0 else 0
-        print("Reward based on height of object:", r2)
-
         # White background
         display.fill((255, 255, 255))
 
@@ -200,7 +196,7 @@ def game(space, object):
 
 if __name__ == "__main__":
 
-    vertices = [[], [(-25, 0), (25, 0), (25, 50), (-25, 50)] ,[(-25, 0), (25, 0), (25, 50)], [(-25, 0), (25, 0), (0, 50)]]
+    vertices = [[], [(-30, -30), (30, -30), (30, 30), (-30, 30)] ,[(-30, -30), (30, -30), (30, 30)], [(-30, -30), (30, -30), (0, 30)]]
 
     for vertex in vertices:
 
