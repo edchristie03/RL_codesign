@@ -132,35 +132,23 @@ class Environment(gym.Env):
     def get_reward(self, obs):
 
         # Reward based on height of object if gripper is moving up as well
-        r1 = max(0, (self.object.body.position[1] - 100) / self.pickup_height) if self.gripper.arm.body.velocity[1] > 0 else 0
+        r2 = self.object.body.position[1] - 100 if self.gripper.arm.body.velocity[1] > 0 else 0
 
-        # Reward based on distance of left fingertip to the object bottom
-        left_finger_tip = self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b)
-        object_bottom = self.object.body.position - (0, 30)
-        d_left = np.linalg.norm(left_finger_tip - object_bottom)
-        r2 = 1.0 - np.tanh(d_left / 200.0)
+        # Reward based on distance of left finger tip to the object bottom
+        r3 = - np.linalg.norm(self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b) - (
+                    self.object.body.position - (0, 30)))
 
-        # Reward based on distance of right fingertip to the object bottom
-        right_finger_tip = self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b)
-        object_bottom = self.object.body.position - (0, 30)
-        d_right = np.linalg.norm(right_finger_tip - object_bottom)
-        r3 = 1.0 - np.tanh(d_right / 200.0)
+        # Reward based on distance of right finger tip to the object bottom
+        r4 = - np.linalg.norm(self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b) - (
+                    self.object.body.position - (0, 30)))
 
-        # Penalty for distance between fingers if above the object
-        tip_distance = np.linalg.norm(right_finger_tip - left_finger_tip)
-
-        if right_finger_tip[1] > self.object.body.position[1]:
-            r4 = np.tanh(tip_distance / 200.0) - 1
-        else:
-            r4 = 0
-
-        reward = 10*r1 + r2 + r3 + 2*r4
+        reward = r2 + r3 + r4
 
         done = False
 
         # Reward based on success
         if self.object.body.position.y > self.pickup_height and self.gripper.base.body.position.y > self.pickup_height:
-            reward += 5
+            reward += 50
             print("Success!")
             done = True
 
@@ -205,11 +193,11 @@ class Environment(gym.Env):
         pygame.quit()
 
 if __name__ == "__main__":
+
     N_ENVS = 8  # how many workers you want
-    MODE = 's'  # 'parallel' or 'single'
 
     # This determines the shape of the object to be picked up. If empty, a ball is created.
-    vertex = [(-30, -30), (30, -30), (30, 30), (-30, 30)]
+    vertex = [] #[(-25, -25), (25, -25), (25, 25), (-25, 25)]
 
     # Define the policy network architecture
     policy_kwargs = dict(net_arch=[256, 256], log_std_init=-0.3)
@@ -227,58 +215,29 @@ if __name__ == "__main__":
 
         return _init
 
-    if MODE == 'parallel':
+    # Training envs (headless, parallel)
+    train_env = SubprocVecEnv([make_env(vertex, i) for i in range(N_ENVS)], start_method="spawn" )
+    train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True)
 
-        # Training envs (headless, parallel)
-        train_env = SubprocVecEnv([make_env(vertex, i) for i in range(N_ENVS)], start_method="spawn" )
-        train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True)
+    # Evaluation env (still a single window so you can watch)
+    eval_env = DummyVecEnv([make_env(vertex, 0, render=True)])
+    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=True, training=False)
+    eval_env.obs_rms = train_env.obs_rms  # share running stats
 
-        # Evaluation env (still a single window so you can watch)
-        eval_env = DummyVecEnv([make_env(vertex, 0, render=True)])
-        eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=True, training=False)
-        eval_env.obs_rms = train_env.obs_rms  # share running stats
+    # Make callback to run 1 episode every eval_freq steps
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=5000, render=True, verbose=0, deterministic=True)
 
-        # Make callback to run 1 episode every eval_freq steps
-        eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=5000, render=True, verbose=0, deterministic=True)
-
-        # Instantiate PPO on the train_env, pass the callback to learn()
-        model = PPO(
-            "MlpPolicy",
-            train_env,
-            n_steps=256,  # 256 × 8 = 2048 steps / update
-            batch_size=512,  # must divide N_ENVS × N_STEPS
-            verbose=0,
-            tensorboard_log="./ppo_gripper_tensorboard/",
-            policy_kwargs=policy_kwargs,
-            ent_coef=0.05
-        )
-
-    else:
-
-        # Training env (headless)
-        train_env = DummyVecEnv([lambda: Monitor(Environment(vertex, render_mode=None))])
-        train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True)
-
-        # Evaluation env (human‐render)
-        eval_env = DummyVecEnv([lambda: Monitor(Environment(vertex, render_mode="human"))])
-        eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=True, training=False)
-
-        # Copy the running mean/var from the training env:
-        eval_env.obs_rms = train_env.obs_rms
-
-        # Make callback to run 1 episode every eval_freq steps
-        eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=5000, render=True, verbose=0, deterministic=False)
-
-        # Instantiate PPO on the train_env, pass the callback to learn()
-        model = PPO(
-            "MlpPolicy",
-            train_env,
-            verbose=0,
-            tensorboard_log="./ppo_gripper_tensorboard/",
-            policy_kwargs=policy_kwargs,
-            ent_coef=0.05,
-        )
-
+    # Instantiate PPO on the train_env, pass the callback to learn()
+    model = PPO(
+        "MlpPolicy",
+        train_env,
+        n_steps=256,  # 256 × 8 = 2048 steps / update
+        batch_size=512,  # must divide N_ENVS × N_STEPS
+        verbose=0,
+        tensorboard_log="./ppo_gripper_tensorboard/",
+        policy_kwargs=policy_kwargs,
+        ent_coef=0.02
+    )
 
     model.learn(total_timesteps=1000000, callback=eval_callback)
     model.save("models/ppo_pymunk_gripper")

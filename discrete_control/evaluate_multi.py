@@ -4,7 +4,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import numpy as np
 import matplotlib.pyplot as plt
 
-vertices = [[], [(-25, 0), (25, 0), (25, 50), (-25, 50)] ,[(-25, 0), (25, 0), (25, 50)], [(-25, 0), (25, 0), (0, 50)]]
+vertices = [[], [(-25, -25), (25, -25), (25, 25), (-25, 25)] ,[(-25, -25), (25, -25), (25, 25)], [(-25, -25), (25, -25), (0, 25)]]
 
 avg_returns = []
 

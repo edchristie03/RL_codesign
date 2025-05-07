@@ -5,12 +5,16 @@ import pymunk
 import gymnasium as gym
 from gymnasium import spaces
 from stable_baselines3.common.callbacks import EvalCallback
-from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
+from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv, SubprocVecEnv
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 
 from main import Gripper, Ball, Floor, Poly
 import main
+
+import os, multiprocessing as mp
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"      # optional
+mp.set_start_method("spawn", force=True)
 
 class Environment(gym.Env):
 
@@ -153,7 +157,7 @@ class Environment(gym.Env):
         # Reward based on distance of right finger tip to the object bottom
         r4 = - np.linalg.norm(self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b) - (self.object.body.position - (0, 30)))
 
-        reward = r2  + r3 + r4
+        reward = r2 + r3 + r4
 
         done = False
 
@@ -203,40 +207,59 @@ class Environment(gym.Env):
 
 if __name__ == "__main__":
 
+    N_ENVS = 8  # Number of parallel environments
+
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
-    vertex = [(-30, -30), (30, -30), (30, 30), (-30, 30)]
-
-    # Training env (headless)
-    train_env = DummyVecEnv([lambda: Monitor(Environment(vertex, render_mode=None))])
-    train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True)
-
-    # Evaluation env (human‐render)
-    eval_env = DummyVecEnv([lambda: Monitor(Environment(vertex, render_mode="human"))])
-    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=True, training=False)
-
-    # Copy the running mean/var from the training env:
-    eval_env.obs_rms = train_env.obs_rms
-
-    # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=100000, render=True, verbose=0, deterministic=False)
+    vertex = [(-25, -25), (25, -25), (25, 25), (-25, 25)]
 
     # Define the policy network architecture
     policy_kwargs = dict(net_arch=[256, 256])
+
+    def make_env(vertex, rank, render=False):
+        """
+        Factory that creates a *fresh* environment in its own process.
+        `rank` is only used if you want per‑worker seeding or logging.
+        """
+
+        def _init():
+            env = Environment(vertex, render_mode="human" if render else None)
+            env = Monitor(env)  # keeps episode stats
+            return env
+
+        return _init
+
+
+    # Training envs (headless, parallel)
+    train_env = SubprocVecEnv([make_env(vertex, i) for i in range(N_ENVS)], start_method="spawn")
+    train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True)
+
+    # Evaluation env (still a single window so you can watch)
+    eval_env = DummyVecEnv([make_env(vertex, 0, render=True)])
+    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=True, training=False)
+    eval_env.obs_rms = train_env.obs_rms  # share running stats
+
+    # Make callback to run 1 episode every eval_freq steps
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000, render=True, verbose=0, deterministic=True)
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
         "MlpPolicy",
         train_env,
+        n_steps=256,  # 256 × 8 = 2048 steps / update
+        batch_size=512,  # must divide N_ENVS × N_STEPS
         verbose=0,
         tensorboard_log="./ppo_gripper_tensorboard/",
         policy_kwargs=policy_kwargs,
-        ent_coef=0.02,
+        ent_coef=0.02
     )
 
     model.learn(total_timesteps=1000000, callback=eval_callback)
     model.save("models/ppo_pymunk_gripper")
     train_env.save("normalise_stats/vecnormalize_stats.pkl")
     print("Training complete and model saved.")
+
+    train_env.close()
+    eval_env.close()
 
 
 # tensorboard --logdir ./ppo_gripper_tensorboard/
