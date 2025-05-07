@@ -9,12 +9,9 @@ from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv, SubprocV
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 
-from main import Gripper, Ball, Floor, Poly
-import main
-
-import os, multiprocessing as mp
-os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"      # optional
-mp.set_start_method("spawn", force=True)
+from grippers import Gripper
+from objects import Ball, Floor, Poly
+import objects, grippers
 
 class Environment(gym.Env):
 
@@ -30,7 +27,8 @@ class Environment(gym.Env):
         self.FPS = 200
 
         # Quick HACK for display. Should refactor main
-        main.display = self.surface
+        objects.display = self.surface
+        grippers.display = self.surface
 
         # Define objects in the environment
         self.gripper = Gripper(self.space)
@@ -42,8 +40,9 @@ class Environment(gym.Env):
         else:
             self.object = Ball(self.space, 30)
 
-        # Define action space
-        self.action_space = spaces.Discrete(7)
+        # Define action space as 3D continuous
+        self.action_space = spaces.Box(low=np.array([-1, -1, -1], dtype=np.float32),
+                                       high=np.array([1, 1, 1], dtype=np.float32))
 
         # Define (continuous) observation space
         high = np.array([np.inf] * 8, dtype=np.float32)
@@ -51,7 +50,7 @@ class Environment(gym.Env):
 
         # Other simulation parameters
         self.pickup_height = 400
-        self.max_steps = 500
+        self.max_steps = 700
         self.current_step = 0
 
     def reset(self, seed=None, options=None):
@@ -81,45 +80,27 @@ class Environment(gym.Env):
 
     def step(self, action):
 
-        # print("Action taken this step:", action)
-
         pygame.event.pump()
-        dx = dy = 0
-        rotation = 0.0
 
-        if action == 0:     # Move left
-            dx = -100
-        elif action == 1:   # Move right
-            dx = 100
-        elif action == 2:   # Move up
-            dy = 100
-        elif action == 3:   # Move down
-            dy = -100
-        elif action == 4:   # Open gripper
-            rotation = 0.1 if self.gripper.left_finger.body.angle > -0.5 else 0.0
-        elif action == 5:   # Close gripper
-            rotation = -0.1 if self.gripper.left_finger.body.angle < 1 else 0.0
-        elif action == 6:   # Do nothing
-            None
+        # Scale the 3D action up from 0-1 range
+        dx, dy, dphi = action * np.array([200, 200, 0.1])
+
+        # print(f"Action: | dx: {dx:.2f} | dy: {dy:.2f} | dphi: {dphi:.2f}")
 
         # Apply the action to the gripper
         self.gripper.arm.body.velocity = (dx, dy)
-        self.gripper.left_finger.body.angle -= rotation
-        self.gripper.right_finger.body.angle += rotation
+        self.gripper.left_finger.body.angle += dphi if -0.5 < self.gripper.left_finger.body.angle < 1 else 0.0
+        self.gripper.right_finger.body.angle -= dphi if -0.5 < self.gripper.left_finger.body.angle < 1 else 0.0
 
         # Step the simulation
         self.space.step(1/self.FPS)
-
         self.current_step += 1
 
-        # Get the observation
+        # Get the observation and reward
         observation = self.get_observation()
-
-        # Get the reward
         reward, done = self.get_reward(observation)
 
-        self.gripper.arm.body.velocity = (0, 0)
-
+        # self.gripper.arm.body.velocity *= 0.9
         truncated = False
         info = {}
 
@@ -152,10 +133,12 @@ class Environment(gym.Env):
         r2 = self.object.body.position[1] - 100 if self.gripper.arm.body.velocity[1] > 0 else 0
 
         # Reward based on distance of left finger tip to the object bottom
-        r3 = - np.linalg.norm(self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b) - (self.object.body.position - (0, 30)))
+        r3 = - np.linalg.norm(self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b) - (
+                    self.object.body.position - (0, 30)))
 
         # Reward based on distance of right finger tip to the object bottom
-        r4 = - np.linalg.norm(self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b) - (self.object.body.position - (0, 30)))
+        r4 = - np.linalg.norm(self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b) - (
+                    self.object.body.position - (0, 30)))
 
         reward = r2 + r3 + r4
 
@@ -173,10 +156,12 @@ class Environment(gym.Env):
 
         # End if left finger tip is below the floor
         if self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b)[1] < self.floor.shape.a[1] - 10:
+            print("Left finger below floor!")
             done = True
 
         # End if object is below the floor
         if self.object.body.position.y < self.floor.shape.a[1] - 10:
+            print("Object below floor!")
             done = True
 
         return reward, done
@@ -207,13 +192,13 @@ class Environment(gym.Env):
 
 if __name__ == "__main__":
 
-    N_ENVS = 8  # Number of parallel environments
+    N_ENVS = 8  # how many workers you want
 
-    # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
-    vertex = [(-25, -25), (25, -25), (25, 25), (-25, 25)]
+    # This determines the shape of the object to be picked up. If empty, a ball is created.
+    vertex = [] #[(-25, -25), (25, -25), (25, 25), (-25, 25)]
 
     # Define the policy network architecture
-    policy_kwargs = dict(net_arch=[256, 256])
+    policy_kwargs = dict(net_arch=[256, 256], log_std_init=-0.3)
 
     def make_env(vertex, rank, render=False):
         """
@@ -228,9 +213,8 @@ if __name__ == "__main__":
 
         return _init
 
-
     # Training envs (headless, parallel)
-    train_env = SubprocVecEnv([make_env(vertex, i) for i in range(N_ENVS)], start_method="spawn")
+    train_env = SubprocVecEnv([make_env(vertex, i) for i in range(N_ENVS)], start_method="spawn" )
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True)
 
     # Evaluation env (still a single window so you can watch)
@@ -239,7 +223,7 @@ if __name__ == "__main__":
     eval_env.obs_rms = train_env.obs_rms  # share running stats
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000, render=True, verbose=0, deterministic=True)
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=5000, render=True, verbose=0, deterministic=True)
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
@@ -263,4 +247,20 @@ if __name__ == "__main__":
 
 
 # tensorboard --logdir ./ppo_gripper_tensorboard/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
