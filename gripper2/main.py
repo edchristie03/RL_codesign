@@ -44,10 +44,7 @@ def game(space, object):
                     gripper.left_finger2.body.angle += 0.1 if gripper.left_finger2.body.angle < 1.5 else 0.0
                     gripper.right_finger2.body.angle -= 0.1 if gripper.right_finger2.body.angle > -1.5 else 0.0
 
-        print("left finger1 angle:", gripper.left_finger1.body.angle)
-        print("right finger1 angle:", gripper.right_finger1.body.angle)
-        print("left finger2 angle:", gripper.left_finger2.body.angle)
-        print("right finger2 angle:", gripper.right_finger2.body.angle)
+
 
         # White background
         display.fill((255, 255, 255))

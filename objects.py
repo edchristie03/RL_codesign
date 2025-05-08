@@ -12,7 +12,7 @@ class Ball():
         self.shape = pymunk.Circle(self.body, radius)
         self.shape.density = 0.5
         self.shape.elasticity = 0.5
-        self.shape.friction = 1
+        self.shape.friction = 0.7
         self.body.angular_damping = 0.1
         space.add(self.body, self.shape)
 
@@ -27,7 +27,7 @@ class Poly():
         self.shape = pymunk.Poly(self.body, vertices, radius=0)
         self.shape.density = 0.5
         self.shape.elasticity = 0.5
-        self.shape.friction = 0.5
+        self.shape.friction = 0.7
         space.add(self.body, self.shape)
 
     def draw(self):
@@ -42,7 +42,7 @@ class Floor():
         self.body = pymunk.Body(body_type=pymunk.Body.STATIC)
         self.shape = pymunk.Segment(self.body, (0, 50), (800, 50), radius)
         self.shape.elasticity = 0.5
-        self.shape.friction = 1
+        self.shape.friction = 0.7
         space.add(self.body, self.shape)
 
     def draw(self):

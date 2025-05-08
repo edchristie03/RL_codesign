@@ -43,8 +43,8 @@ class Environment(gym.Env):
         # Define action space
         self.action_space = spaces.Discrete(9)
 
-        # Define (continuous) observation space
-        high = np.array([np.inf] * 8, dtype=np.float32)
+        # Define 8D (continuous) observation space
+        high = np.array([np.inf] * 23, dtype=np.float32)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # Other simulation parameters
@@ -78,8 +78,6 @@ class Environment(gym.Env):
         return obs, info
 
     def step(self, action):
-
-        # print("Action taken this step:", action)
 
         pygame.event.pump()
         dx = dy = 0
@@ -133,21 +131,53 @@ class Environment(gym.Env):
 
     def get_observation(self):
 
-        # print("Getting observation...")
+        base = self.gripper.base.body
+        obj = self.object.body
 
-        # Base position
-        bx, by = self.gripper.base.body.position
+        # Object relative to base
+        rel_obj_pos = obj.position - base.position
+        rel_obj_vel = obj.velocity - base.velocity
 
-        # Gripper angles and angular velocities
-        left = self.gripper.left_finger1.body
-        right = self.gripper.right_finger1.body
-        la, lav = left.angle, left.angular_velocity
-        ra, rav = right.angle, right.angular_velocity
+        # Finger Angles and angular velocities
+        fingers = [self.gripper.left_finger1.body, self.gripper.left_finger2.body, self.gripper.right_finger1.body, self.gripper.right_finger2.body]
+        finger_feats = []
 
-        # Object relative position
-        object = self.object.body
-        rel_pos = object.position - self.gripper.base.body.position
-        obs = np.array([bx, by, la, lav, ra, rav, rel_pos.x, rel_pos.y], dtype=np.float32)
+        for j in fingers:
+            finger_feats.extend([np.cos(j.angle), np.sin(j.angle), j.angular_velocity])
+
+        # Fingertip positions
+        l_tip = self.gripper.left_finger2.body.local_to_world(self.gripper.left_finger2.shape.b)
+        r_tip = self.gripper.right_finger2.body.local_to_world(self.gripper.right_finger2.shape.b)
+        l_tip_rel = l_tip - obj.position
+        r_tip_rel = r_tip - obj.position
+        gap = np.linalg.norm(l_tip - r_tip) / 200
+
+        # Touch BOOLs
+        l_touch = 1.0 if self.gripper.left_finger2.shape.shapes_collide(self.object.shape).points else 0.0
+        r_touch = 1.0 if self.gripper.right_finger2.shape.shapes_collide(self.object.shape).points else 0.0
+
+        obs = np.array([ rel_obj_pos.x, rel_obj_pos.y,
+                                rel_obj_vel.x, rel_obj_vel.y,
+                                *finger_feats,                  # 12 values
+                                l_tip_rel.x, l_tip_rel.y,
+                                r_tip_rel.x, r_tip_rel.y,
+                                gap,
+                                l_touch, r_touch
+                                ], dtype=np.float32)
+
+        # # Base position
+        # bx, by = self.gripper.base.body.position
+        #
+        # # Gripper angles and angular velocities
+        # left = self.gripper.left_finger1.body
+        # right = self.gripper.right_finger1.body
+        # la, lav = left.angle, left.angular_velocity
+        # ra, rav = right.angle, right.angular_velocity
+        #
+        # # Object relative position
+        # object = self.object.body
+        # rel_pos = object.position - self.gripper.base.body.position
+        # obs = np.array([bx, by, la, lav, ra, rav, rel_pos.x, rel_pos.y], dtype=np.float32)
 
         return obs
 
@@ -244,7 +274,7 @@ if __name__ == "__main__":
     eval_env.obs_rms = train_env.obs_rms  # share running stats
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000, render=True, verbose=0, deterministic=True)
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=5000, render=True, verbose=0, deterministic=True)
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
