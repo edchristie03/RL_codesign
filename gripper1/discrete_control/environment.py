@@ -44,12 +44,12 @@ class Environment(gym.Env):
         self.action_space = spaces.Discrete(7)
 
         # Define (continuous) observation space
-        high = np.array([np.inf] * 8, dtype=np.float32)
+        high = np.array([np.inf] * 17, dtype=np.float32)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # Other simulation parameters
         self.pickup_height = 400
-        self.max_steps = 500
+        self.max_steps = 1000
         self.current_step = 0
 
     def reset(self, seed=None, options=None):
@@ -125,22 +125,39 @@ class Environment(gym.Env):
 
     def get_observation(self):
 
-        # print("Getting observation...")
+        base = self.gripper.base.body
+        obj = self.object.body
 
-        # Base position
-        bx, by = self.gripper.base.body.position
+        # Object relative to base
+        rel_obj_pos = obj.position - base.position
+        rel_obj_vel = obj.velocity - base.velocity
 
-        # Gripper angles and angular velocities
-        left = self.gripper.left_finger.body
-        right = self.gripper.right_finger.body
-        la, lav = left.angle, left.angular_velocity
-        ra, rav = right.angle, right.angular_velocity
+        # Finger Angles and angular velocities
+        fingers = [self.gripper.left_finger.body, self.gripper.right_finger.body]
+        finger_feats = []
 
-        # Object relative position
-        object = self.object.body
-        rel_pos = object.position - self.gripper.base.body.position
+        for j in fingers:
+            finger_feats.extend([np.cos(j.angle), np.sin(j.angle), j.angular_velocity])
 
-        obs = np.array([bx, by, la, lav, ra, rav, rel_pos.x, rel_pos.y], dtype=np.float32)
+        # Fingertip positions
+        l_tip = self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b)
+        r_tip = self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b)
+        l_tip_rel = l_tip - obj.position
+        r_tip_rel = r_tip - obj.position
+        gap = np.linalg.norm(l_tip - r_tip) / 200
+
+        # Touch BOOLs
+        l_touch = 1.0 if self.gripper.left_finger.shape.shapes_collide(self.object.shape).points else 0.0
+        r_touch = 1.0 if self.gripper.right_finger.shape.shapes_collide(self.object.shape).points else 0.0
+
+        obs = np.array([rel_obj_pos.x, rel_obj_pos.y,
+                        rel_obj_vel.x, rel_obj_vel.y,
+                        *finger_feats,  # 6 values
+                        l_tip_rel.x, l_tip_rel.y,
+                        r_tip_rel.x, r_tip_rel.y,
+                        gap,
+                        l_touch, r_touch
+                        ], dtype=np.float32)
 
         return obs
 

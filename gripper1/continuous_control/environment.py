@@ -45,12 +45,12 @@ class Environment(gym.Env):
                                        high=np.array([1, 1, 1], dtype=np.float32))
 
         # Define (continuous) observation space
-        high = np.array([np.inf] * 8, dtype=np.float32)
+        high = np.array([np.inf] * 17, dtype=np.float32)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # Other simulation parameters
         self.pickup_height = 400
-        self.max_steps = 700
+        self.max_steps = 1000
         self.current_step = 0
 
     def reset(self, seed=None, options=None):
@@ -83,14 +83,12 @@ class Environment(gym.Env):
         pygame.event.pump()
 
         # Scale the 3D action up from 0-1 range
-        dx, dy, dphi = action * np.array([200, 200, 0.1])
-
-        # print(f"Action: | dx: {dx:.2f} | dy: {dy:.2f} | dphi: {dphi:.2f}")
+        dx, dy, dphi = action * np.array([100, 100, 0.1])
 
         # Apply the action to the gripper
         self.gripper.arm.body.velocity = (dx, dy)
-        self.gripper.left_finger.body.angle += dphi if -0.5 < self.gripper.left_finger.body.angle < 1 else 0.0
-        self.gripper.right_finger.body.angle -= dphi if -0.5 < self.gripper.left_finger.body.angle < 1 else 0.0
+        self.gripper.left_finger.body.angle = np.clip(self.gripper.left_finger.body.angle + dphi, -0.5, 0.7)
+        self.gripper.right_finger.body.angle = np.clip(self.gripper.right_finger.body.angle - dphi, -0.7, 0.5)
 
         # Step the simulation
         self.space.step(1/self.FPS)
@@ -108,22 +106,39 @@ class Environment(gym.Env):
 
     def get_observation(self):
 
-        # print("Getting observation...")
+        base = self.gripper.base.body
+        obj = self.object.body
 
-        # Base position
-        bx, by = self.gripper.base.body.position
+        # Object relative to base
+        rel_obj_pos = obj.position - base.position
+        rel_obj_vel = obj.velocity - base.velocity
 
-        # Gripper angles and angular velocities
-        left = self.gripper.left_finger.body
-        right = self.gripper.right_finger.body
-        la, lav = left.angle, left.angular_velocity
-        ra, rav = right.angle, right.angular_velocity
+        # Finger Angles and angular velocities
+        fingers = [self.gripper.left_finger.body, self.gripper.right_finger.body]
+        finger_feats = []
 
-        # Object relative position
-        object = self.object.body
-        rel_pos = object.position - self.gripper.base.body.position
+        for j in fingers:
+            finger_feats.extend([np.cos(j.angle), np.sin(j.angle), j.angular_velocity])
 
-        obs = np.array([bx, by, la, lav, ra, rav, rel_pos.x, rel_pos.y], dtype=np.float32)
+        # Fingertip positions
+        l_tip = self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b)
+        r_tip = self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b)
+        l_tip_rel = l_tip - obj.position
+        r_tip_rel = r_tip - obj.position
+        gap = np.linalg.norm(l_tip - r_tip) / 200
+
+        # Touch BOOLs
+        l_touch = 1.0 if self.gripper.left_finger.shape.shapes_collide(self.object.shape).points else 0.0
+        r_touch = 1.0 if self.gripper.right_finger.shape.shapes_collide(self.object.shape).points else 0.0
+
+        obs = np.array([rel_obj_pos.x, rel_obj_pos.y,
+                        rel_obj_vel.x, rel_obj_vel.y,
+                        *finger_feats,  # 6 values
+                        l_tip_rel.x, l_tip_rel.y,
+                        r_tip_rel.x, r_tip_rel.y,
+                        gap,
+                        l_touch, r_touch
+                        ], dtype=np.float32)
 
         return obs
 
@@ -154,10 +169,10 @@ class Environment(gym.Env):
         if self.current_step >= self.max_steps:
             done = True
 
-        # End if left finger tip is below the floor
-        if self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b)[1] < self.floor.shape.a[1] - 10:
-            print("Left finger below floor!")
-            done = True
+        # # End if left finger tip is below the floor
+        # if self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b)[1] < self.floor.shape.a[1] - 10:
+        #     print("Left finger below floor!")
+        #     done = True
 
         # End if object is below the floor
         if self.object.body.position.y < self.floor.shape.a[1] - 10:
@@ -198,7 +213,7 @@ if __name__ == "__main__":
     vertex = [] #[(-25, -25), (25, -25), (25, 25), (-25, 25)]
 
     # Define the policy network architecture
-    policy_kwargs = dict(net_arch=[256, 256], log_std_init=-0.3)
+    policy_kwargs = dict(net_arch=[256, 256])
 
     def make_env(vertex, rank, render=False):
         """

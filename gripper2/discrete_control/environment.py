@@ -49,7 +49,7 @@ class Environment(gym.Env):
 
         # Other simulation parameters
         self.pickup_height = 400
-        self.max_steps = 500
+        self.max_steps = 1000
         self.current_step = 0
 
     def reset(self, seed=None, options=None):
@@ -164,20 +164,6 @@ class Environment(gym.Env):
                                 gap,
                                 l_touch, r_touch
                                 ], dtype=np.float32)
-
-        # # Base position
-        # bx, by = self.gripper.base.body.position
-        #
-        # # Gripper angles and angular velocities
-        # left = self.gripper.left_finger1.body
-        # right = self.gripper.right_finger1.body
-        # la, lav = left.angle, left.angular_velocity
-        # ra, rav = right.angle, right.angular_velocity
-        #
-        # # Object relative position
-        # object = self.object.body
-        # rel_pos = object.position - self.gripper.base.body.position
-        # obs = np.array([bx, by, la, lav, ra, rav, rel_pos.x, rel_pos.y], dtype=np.float32)
 
         return obs
 
