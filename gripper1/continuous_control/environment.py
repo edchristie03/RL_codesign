@@ -96,11 +96,11 @@ class Environment(gym.Env):
 
         # Get the observation and reward
         observation = self.get_observation()
-        reward, done = self.get_reward(observation)
+        reward, done, success = self.get_reward(observation)
 
         # self.gripper.arm.body.velocity *= 0.9
         truncated = False
-        info = {}
+        info = {'success': success}
 
         return observation, reward, done, truncated, info
 
@@ -158,11 +158,13 @@ class Environment(gym.Env):
         reward = r2 + r3 + r4
 
         done = False
+        success = False
 
         # Reward based on success
         if self.object.body.position.y > self.pickup_height and self.gripper.base.body.position.y > self.pickup_height:
             reward += 50
             print("Success!")
+            success = True
             done = True
 
         # Episode termination if max steps reached
@@ -179,7 +181,7 @@ class Environment(gym.Env):
             print("Object below floor!")
             done = True
 
-        return reward, done
+        return reward, done, success
 
     def render(self, mode="human"):
 

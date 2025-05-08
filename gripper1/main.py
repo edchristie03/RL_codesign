@@ -34,6 +34,8 @@ def game(space, object):
                     gripper.left_finger.body.angle += 0.1 if gripper.left_finger.body.angle < 1 else 0.0
                     gripper.right_finger.body.angle -= 0.1 if gripper.left_finger.body.angle < 1 else 0.0
 
+        print(object.body.position[1])
+
         # White background
         display.fill((255, 255, 255))
 
@@ -52,7 +54,8 @@ def game(space, object):
 
 if __name__ == "__main__":
 
-    vertices = [[], [(-30, -30), (30, -30), (30, 30), (-30, 30)] ,[(-30, -30), (30, -30), (30, 30)], [(-30, -30), (30, -30), (0, 30)]]
+    vertices = [[], [(-30, -30), (30, -30), (30, 30), (-30, 30)] ,[(-30, -30), (30, -30), (30, 30)], [(-30, -30), (30, -30), (0, 30)],
+                [(-30, -30), (30, -30), (0, 30), (-30, 30)], [(-10, -30), (0, -30), (0, 30), (-10, 30)], [(-80, -30), (80, -30), (80, 0), (-80, 0)]]
 
     for vertex in vertices:
 

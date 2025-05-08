@@ -4,11 +4,11 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from environment import Environment
 
-import os, multiprocessing as mp
-os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"      # optional
-mp.set_start_method("spawn", force=True)
+# ball, square, RA triangle, equilateral triangle, half trapezoid, tall rectangle, wide rectangle
 
-vertices = [[], [(-25, -25), (25, -25), (25, 25), (-25, 25)] ,[(-25, -25), (25, -25), (25, 25)], [(-25, -25), (25, -25), (0, 25)]]
+vertices = [[], [(-30, -30), (30, -30), (30, 30), (-30, 30)] ,[(-30, -30), (30, -30), (30, 30)], [(-30, -30), (30, -30), (0, 30)],
+                [(-30, -30), (30, -30), (0, 30), (-30, 30)], [(-10, -30), (0, -30), (0, 30), (-10, 30)], [(-80, -30), (80, -30), (80, 0), (-80, 0)]]
+
 
 if __name__ == "__main__":
 

@@ -8,7 +8,7 @@ import os, multiprocessing as mp
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"      # optional
 mp.set_start_method("spawn", force=True)
 
-vertices = [[], [(-25, -25), (25, -25), (25, 25), (-25, 25)] ,[(-25, -25), (25, -25), (25, 25)], [(-25, -25), (25, -25), (0, 25)]]
+vertices = [[], [(-30, -30), (30, -30), (30, 30), (-30, 30)] ,[(-30, -30), (30, -30), (30, 30)], [(-30, -30), (30, -30), (0, 30)]]
 
 if __name__ == "__main__":
 

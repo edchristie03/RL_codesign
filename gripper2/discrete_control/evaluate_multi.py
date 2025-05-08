@@ -4,9 +4,11 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import numpy as np
 import matplotlib.pyplot as plt
 
-vertices = [[], [(-25, -25), (25, -25), (25, 25), (-25, 25)] ,[(-25, -25), (25, -25), (25, 25)], [(-25, -25), (25, -25), (0, 25)]]
+vertices = [[], [(-30, -30), (30, -30), (30, 30), (-30, 30)] ,[(-30, -30), (30, -30), (30, 30)], [(-30, -30), (30, -30), (0, 30)],
+                [(-30, -30), (30, -30), (0, 30), (-30, 30)], [(-10, -30), (0, -30), (0, 30), (-10, 30)], [(-80, -30), (80, -30), (80, 0), (-80, 0)]]
 
 avg_returns = []
+successes = []
 
 for idx, vertex in enumerate(vertices):
 
@@ -21,6 +23,7 @@ for idx, vertex in enumerate(vertices):
     # Run N test episodes
     N = 10
     returns = []
+    shape_successes = 0
     for ep in range(1, N + 1):
         obs = test_env.reset()
         done = False
@@ -31,20 +34,39 @@ for idx, vertex in enumerate(vertices):
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = test_env.step(action)
             total_reward += reward
-            test_env.render()  # pops up the Pygame window and draws each frame
+            test_env.render()
+            if info[0]['success']:
+                shape_successes += 1
         print(f"Episode {ep} finished with total reward {total_reward}")
         returns.append(total_reward)
-    avg_returns.append(np.mean(returns))
 
+    avg_returns.append(np.mean(returns))
+    successes.append(shape_successes)
     test_env.close()
 
-# Now plot
+labels = ["Circle", "Square", "RA triangle", "Equi Triangle", "Half Trapezoid", "Tall Rectangle", "Wide Rectangle"]
+
+
+# Now plot average returns
 plt.figure(figsize=(6,4))
 plt.plot(range(len(vertices)), avg_returns, marker='o', linewidth=2)
-plt.xticks(range(len(vertices)), ['Circle', 'Square', 'RA Triangle', 'Equilateral Triangle'], rotation=45)
+plt.xticks(range(len(vertices)), labels, rotation=45)
 plt.xlabel("Vertex Configuration")
 plt.ylabel("Average Return")
-plt.title("Average Return per Vertex Configuration")
+plt.title("Gripper 2: Average Return per Vertex Configuration")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# ball, square, RA triangle, equilateral triangle, half trapezoid, tall rectangle, wide rectangle
+
+# Plot success rates
+plt.figure(figsize=(6,4))
+plt.bar(range(len(vertices)), successes)
+plt.xticks(range(len(vertices)), labels, rotation=45)
+plt.xlabel("Vertex Configuration")
+plt.ylabel("Successes")
+plt.title("Gripper 2: Successes per Vertex Configuration")
 plt.grid(True)
 plt.tight_layout()
 plt.show()
