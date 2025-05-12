@@ -51,12 +51,12 @@ if __name__ == "__main__":
             verbose=0,
             tensorboard_log="./ppo_gripper_tensorboard/",
             policy_kwargs=policy_kwargs,
-            ent_coef=0.02
+            ent_coef=0.02,
         )
 
         model.learn(total_timesteps=1000000, callback=eval_callback)
-        model.save(f"models/ppo_pymunk_gripper_{idx}")
-        train_env.save(f"normalise_stats/vecnormalize_stats_{idx}.pkl")
+        model.save(f"models/ppo_pymunk_gripper_A{idx}")
+        train_env.save(f"normalise_stats/vecnormalize_stats_A{idx}.pkl")
         print("Training complete and model saved for shape", idx)
 
         train_env.close()

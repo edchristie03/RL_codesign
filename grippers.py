@@ -160,3 +160,4 @@ class Finger2():
         pygame.draw.line(display, (0, 255, 0), (x1, y1), (x2, y2), int(self.shape.radius * 2))
 
 
+

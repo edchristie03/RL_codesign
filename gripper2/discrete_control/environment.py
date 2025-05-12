@@ -44,13 +44,16 @@ class Environment(gym.Env):
         self.action_space = spaces.Discrete(9)
 
         # Define 8D (continuous) observation space
-        high = np.array([np.inf] * 23, dtype=np.float32)
+        high = np.array([np.inf] * 28, dtype=np.float32)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # Other simulation parameters
         self.pickup_height = 400
         self.max_steps = 1000
         self.current_step = 0
+
+        self.left = True
+        self.right = True
 
     def reset(self, seed=None, options=None):
 
@@ -71,6 +74,8 @@ class Environment(gym.Env):
             self.object = Ball(self.space, 30)
 
         self.current_step = 0
+        self.left = True
+        self.right = True
 
         # initial observation and info
         obs = self.get_observation()
@@ -131,6 +136,16 @@ class Environment(gym.Env):
 
     def get_observation(self):
 
+        def tip_to_surface_distance(shape, tip) -> float:
+            """
+            Signed distance from tip to the *outside* of the shape.
+            • positive => tip is outside
+            • 0        => tip is exactly on the surface
+            • negative => tip is poking inside (rare but possible after penetration)
+            Works for both Circles and Polys through Shape.point_query().
+            """
+            return shape.point_query(tip).distance
+
         base = self.gripper.base.body
         obj = self.object.body
 
@@ -138,10 +153,12 @@ class Environment(gym.Env):
         rel_obj_pos = obj.position - base.position
         rel_obj_vel = obj.velocity - base.velocity
 
+        # Object orientation
+        obj_orient = (np.cos(obj.angle), np.sin(obj.angle))
+
         # Finger Angles and angular velocities
         fingers = [self.gripper.left_finger1.body, self.gripper.left_finger2.body, self.gripper.right_finger1.body, self.gripper.right_finger2.body]
         finger_feats = []
-
         for j in fingers:
             finger_feats.extend([np.cos(j.angle), np.sin(j.angle), j.angular_velocity])
 
@@ -151,6 +168,11 @@ class Environment(gym.Env):
         l_tip_rel = l_tip - obj.position
         r_tip_rel = r_tip - obj.position
         gap = np.linalg.norm(l_tip - r_tip) / 200
+
+        # Distance from fingertip to object surface
+        d_l = tip_to_surface_distance(self.object.shape, l_tip)
+        d_r = tip_to_surface_distance(self.object.shape, r_tip)
+        d_c = tip_to_surface_distance(self.object.shape, (l_tip + r_tip) * 0.5)
 
         # Touch BOOLs
         l_touch = 1.0 if self.gripper.left_finger2.shape.shapes_collide(self.object.shape).points else 0.0
@@ -162,40 +184,46 @@ class Environment(gym.Env):
                                 l_tip_rel.x, l_tip_rel.y,
                                 r_tip_rel.x, r_tip_rel.y,
                                 gap,
-                                l_touch, r_touch
+                                l_touch, r_touch,
+                                obj_orient[0], obj_orient[1],
+                                d_l, d_r, d_c,
                                 ], dtype=np.float32)
 
         return obs
 
     def get_reward(self, obs):
 
-        # Reward based on height of object if gripper is moving up as well
-        r2 = self.object.body.position[1] - 100 if self.gripper.arm.body.velocity[1] > 0 else 0
+        l_touch = obs[21]
+        r_touch = obs[22]
 
-        # Reward based on distance of left finger tip to the object bottom
-        r3 = - np.linalg.norm(self.gripper.left_finger2.body.local_to_world(self.gripper.left_finger2.shape.b) - (self.object.body.position - (0, 30)))
+        r2 = 0
+        r3 = 0
 
-        # Reward based on distance of right finger tip to the object bottom
-        r4 = - np.linalg.norm(self.gripper.right_finger2.body.local_to_world(self.gripper.right_finger2.shape.b) - (self.object.body.position - (0, 30)))
+        # Reward based on height of object if object below base(can't flick it)
+        r1 = round(max(self.object.body.position[1] - 100, 0), 3) / 300 if self.object.body.position[1] < self.gripper.base.body.position[1] else 0
 
-        reward = r2 + r3 + r4
+        if l_touch and self.left:
+            r2 = 1
+            self.left = False
+
+        if r_touch and self.right:
+            r3 = 1
+            self.right = False
+
+        reward = r1 + r2 + r3
 
         done = False
         success = False
 
         # Reward based on success
         if self.object.body.position.y > self.pickup_height and self.gripper.base.body.position.y > self.pickup_height:
-            reward += 50
+            reward += 100000
             print("Success!")
             success = True
             done = True
 
         # Episode termination if max steps reached
         if self.current_step >= self.max_steps:
-            done = True
-
-        # End if left finger tip is below the floor
-        if self.gripper.left_finger2.body.local_to_world(self.gripper.left_finger2.shape.b)[1] < self.floor.shape.a[1] - 10:
             done = True
 
         # End if object is below the floor
@@ -233,7 +261,7 @@ if __name__ == "__main__":
     N_ENVS = 8  # Number of parallel environments
 
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
-    vertex = []#[(-25, -25), (25, -25), (25, 25), (-25, 25)]
+    vertex = [(-30, -30), (30, -30), (30, 30)]
 
     # Define the policy network architecture
     policy_kwargs = dict(net_arch=[256, 256])
@@ -262,7 +290,7 @@ if __name__ == "__main__":
     eval_env.obs_rms = train_env.obs_rms  # share running stats
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=5000, render=True, verbose=0, deterministic=True)
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=500000, render=True, verbose=0, deterministic=True)
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
@@ -273,10 +301,10 @@ if __name__ == "__main__":
         verbose=0,
         tensorboard_log="./ppo_gripper_tensorboard/",
         policy_kwargs=policy_kwargs,
-        ent_coef=0.02
+        ent_coef=0.05,
     )
 
-    model.learn(total_timesteps=1000000, callback=eval_callback)
+    model.learn(total_timesteps=10000000, callback=eval_callback)
     model.save("models/ppo_pymunk_gripper")
     train_env.save("normalise_stats/vecnormalize_stats.pkl")
     print("Training complete and model saved.")

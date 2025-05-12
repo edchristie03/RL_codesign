@@ -2,7 +2,7 @@ from stable_baselines3 import PPO
 from environment import Environment
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
-vertex = []#[(-25, -25), (25, -25), (25, 25), (-25, 25)]
+vertex = [(-30, -30), (30, -30), (30, 30)]
 
 # 1Load the trained policy
 model = PPO.load("models/ppo_pymunk_gripper")
