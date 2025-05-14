@@ -33,9 +33,9 @@ def game(space, object):
                 if event.key == pygame.K_c:
                     gripper.left_finger.body.angle += 0.1 if gripper.left_finger.body.angle < 1 else 0.0
                 if event.key == pygame.K_o:
-                    gripper.right_finger.body.angle += 0.1 if gripper.left_finger.body.angle > -0.5 else 0.0
+                    gripper.right_finger.body.angle += 0.1 if gripper.right_finger.body.angle > -0.5 else 0.0
                 if event.key == pygame.K_p:
-                    gripper.right_finger.body.angle -= 0.1 if gripper.left_finger.body.angle < 1 else 0.0
+                    gripper.right_finger.body.angle -= 0.1 if gripper.right_finger.body.angle < 1 else 0.0
 
 
 

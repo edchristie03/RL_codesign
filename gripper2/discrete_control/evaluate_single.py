@@ -8,7 +8,7 @@ vertex = [(-30, -30), (30, -30), (0, 30)]
 model = PPO.load("models/ppo_pymunk_gripper")
 
 # Create a fresh env in human‐render mode
-test_env = DummyVecEnv([lambda: Environment(vertex, render_mode="human")])
+test_env = DummyVecEnv([lambda: Environment(vertex, training=False, render_mode="human")])
 test_env = VecNormalize.load("normalise_stats/vecnormalize_stats.pkl", test_env)
 test_env.training = False        # freeze stats, use them consistently
 

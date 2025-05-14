@@ -99,7 +99,7 @@ class Finger1():
         self.body.position = anchor
         self.shape = pymunk.Segment(self.body, (0, 0), (0, -120), 5)
         self.shape.density = 1
-        self.shape.friction = 0.7
+        self.shape.friction = 1.5
         space.add(self.body, self.shape)
 
         # Create the joint
@@ -134,7 +134,7 @@ class Finger2():
         self.body.position = anchor
         self.shape = pymunk.Segment(self.body, (0, 0), (0, -100), 5)
         self.shape.density = 1
-        self.shape.friction = 0.7
+        self.shape.friction = 1.5
         space.add(self.body, self.shape)
 
         # Create the joint

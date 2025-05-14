@@ -15,7 +15,7 @@ import objects, grippers
 
 class Environment(gym.Env):
 
-    def __init__(self, vertex, render_mode=None):
+    def __init__(self, vertex, training=True, render_mode=None):
 
         self.render_mode = render_mode
 
@@ -50,8 +50,9 @@ class Environment(gym.Env):
 
         # Other simulation parameters
         self.pickup_height = 400
-        self.max_steps = 1500
+        self.max_steps = 2500
         self.current_step = 0
+        self.training = training
 
     def reset(self, seed=None, options=None):
 
@@ -66,6 +67,10 @@ class Environment(gym.Env):
         self.gripper = Gripper(self.space)
         self.floor = Floor(self.space, radius=20)
         self.walls = Walls(self.space)
+
+        if self.training:
+            self.gripper.left_finger.body.angle = np.random.uniform(-1, 1)
+            self.gripper.right_finger.body.angle = np.random.uniform(-1, 1)
 
         if self.vertex:
             self.object = Poly(self.space, self.vertex)
@@ -172,27 +177,30 @@ class Environment(gym.Env):
 
     def get_reward(self, obs):
 
-        # Reward based on height of object if gripper is moving up as well
+        # Reward based on height of object if gripper is in contact with either finger
         r1 = 20 * max(self.object.body.position[1] - 100, 0) / (self.pickup_height - 100) if (obs[-3] or obs[-4]) else 0
+
+        # Reward based on height of object if gripper is moving up
+        r2 = 20 * max(self.object.body.position[1] - 100, 0) / (self.pickup_height - 100) if self.gripper.arm.body.velocity[1] > 0 else 0
 
         # Reward if left fingertip distance within threshold
         l_tip_dist = np.linalg.norm(self.gripper.left_finger.body.local_to_world(self.gripper.left_finger.shape.b) - self.object.body.position)
         r_tip_dist = np.linalg.norm(self.gripper.right_finger.body.local_to_world(self.gripper.right_finger.shape.b) - self.object.body.position)
 
-        if l_tip_dist < 30:
-            r2 = 10
+        if l_tip_dist < 40:
+            r3 = 10
         else:
-            r2 = 10 - 10*np.tanh((l_tip_dist - 30)/100)
+            r3 = 10 - 10*np.tanh((l_tip_dist - 40)/100)
 
-        if r_tip_dist < 30:
-            r3 = 1
+        if r_tip_dist < 40:
+            r4 = 10
         else:
-            r3 = 10 - 10*np.tanh((r_tip_dist - 30) / 100)
+            r4 = 10 - 10*np.tanh((r_tip_dist - 40) / 100)
 
-        r4 = 10 if obs[-3] else 0
-        r5 = 10 if obs[-4] else 0
+        r5 = 10 if obs[-3] else 0
+        r6 = 10 if obs[-4] else 0
 
-        reward = r1 + r2 + r3 + r4 + r5
+        reward = r1 + r2 + r3 + r4 + r5 + r6
 
         # Touch Penalties
         a = 10 if self.gripper.left_finger.shape.shapes_collide(self.gripper.right_finger.shape).points else 0.0
@@ -207,7 +215,7 @@ class Environment(gym.Env):
 
         # Reward based on success
         if self.object.body.position.y > self.pickup_height and self.gripper.base.body.position.y > self.pickup_height:
-            reward += 10000
+            reward += 100000
             print("Success!")
             success = True
             done = True
@@ -248,7 +256,7 @@ if __name__ == "__main__":
     N_ENVS = 8  # Number of parallel environments
 
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
-    vertex = [(-30, -30), (30, -30), (0, 30)]
+    vertex = []#[(-30, -30), (30, -30), (0, 30)]
 
     # Define the policy network architecture
     policy_kwargs = {'net_arch':[256, 256], "log_std_init": 2}
@@ -260,12 +268,11 @@ if __name__ == "__main__":
         """
 
         def _init():
-            env = Environment(vertex, render_mode="human" if render else None)
+            env = Environment(vertex, training=True, render_mode="human" if render else None)
             env = Monitor(env)  # keeps episode stats
             return env
 
         return _init
-
 
     # Training envs (headless, parallel)
     train_env = SubprocVecEnv([make_env(vertex, i) for i in range(N_ENVS)], start_method="spawn")
@@ -277,7 +284,7 @@ if __name__ == "__main__":
     eval_env.obs_rms = train_env.obs_rms  # share running stats
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=100000, render=True, verbose=0, deterministic=False)
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=15000, render=True, verbose=0, deterministic=False)
 
 
     class RawAndNormalizedRewardLogger(BaseCallback):
@@ -314,6 +321,7 @@ if __name__ == "__main__":
         ent_coef=0.01,
         learning_rate=3e-4
     )
+
 
     model.learn(total_timesteps=5000000, callback=[eval_callback, RawAndNormalizedRewardLogger()])
     model.save("models/ppo_pymunk_gripper")
