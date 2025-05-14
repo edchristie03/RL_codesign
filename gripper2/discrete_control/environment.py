@@ -10,7 +10,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 
 from grippers import Gripper2
-from objects import Ball, Floor, Poly
+from objects import Ball, Floor, Poly, Walls
 import objects, grippers
 
 class Environment(gym.Env):
@@ -33,6 +33,7 @@ class Environment(gym.Env):
         # Define objects in the environment
         self.gripper = Gripper2(self.space)
         self.floor = Floor(self.space, 20)
+        self.walls = Walls(self.space)
         self.vertex = vertex
 
         if self.vertex:
@@ -41,19 +42,16 @@ class Environment(gym.Env):
             self.object = Ball(self.space, 30)
 
         # Define action space
-        self.action_space = spaces.Discrete(9)
+        self.action_space = spaces.Discrete(13)
 
         # Define 8D (continuous) observation space
-        high = np.array([np.inf] * 28, dtype=np.float32)
+        high = np.array([np.inf] * 30, dtype=np.float32)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # Other simulation parameters
-        self.pickup_height = 400
-        self.max_steps = 1000
+        self.pickup_height = 300
+        self.max_steps = 1500
         self.current_step = 0
-
-        self.left = True
-        self.right = True
 
     def reset(self, seed=None, options=None):
 
@@ -67,6 +65,12 @@ class Environment(gym.Env):
         # Recreate the objects
         self.gripper = Gripper2(self.space)
         self.floor = Floor(self.space, radius=20)
+        self.walls = Walls(self.space)
+
+        # self.gripper.left_finger1.body.angle = np.random.uniform(-1, 1)
+        # self.gripper.right_finger1.body.angle = np.random.uniform(-1, 1)
+        # self.gripper.left_finger2.body.angle = np.random.uniform(-1, 1)
+        # self.gripper.right_finger2.body.angle = np.random.uniform(-1, 1)
 
         if self.vertex:
             self.object = Poly(self.space, self.vertex)
@@ -74,8 +78,6 @@ class Environment(gym.Env):
             self.object = Ball(self.space, 30)
 
         self.current_step = 0
-        self.left = True
-        self.right = True
 
         # initial observation and info
         obs = self.get_observation()
@@ -95,23 +97,31 @@ class Environment(gym.Env):
             dy = 100
         elif action == 3:   # Move down
             dy = -100
-        elif action == 4:   # Open gripper finger 1
-            rotation1 = 0.1
+        elif action == 4:   # Open gripper left finger 1
+            rotation1 = 0.01
             self.gripper.left_finger1.body.angle -= rotation1 if self.gripper.left_finger1.body.angle > -0.5 else 0.0
+        elif action == 5:   # Open gripper right finger 1
+            rotation1 = 0.01
             self.gripper.right_finger1.body.angle += rotation1 if self.gripper.right_finger1.body.angle < 0.5 else 0.0
-        elif action == 5:   # Close gripper finger 1
-            rotation1 = -0.1
+        elif action == 6:   # Close gripper left finger 1
+            rotation1 = -0.01
             self.gripper.left_finger1.body.angle -= rotation1 if self.gripper.left_finger1.body.angle < 0.7 else 0.0
+        elif action == 7:   # Close gripper right finger 1
+            rotation1 = -0.01
             self.gripper.right_finger1.body.angle += rotation1 if self.gripper.right_finger1.body.angle > -0.7 else 0.0
-        elif action == 6:   # Open gripper finger 2
-            rotation2 = 0.1
+        elif action == 8:   # Open gripper left finger 2
+            rotation2 = 0.01
             self.gripper.left_finger2.body.angle -= rotation2 if self.gripper.left_finger2.body.angle > -0.5 else 0.0
+        elif action == 9:   # Open gripper right finger 2
+            rotation2 = 0.01
             self.gripper.right_finger2.body.angle += rotation2 if self.gripper.right_finger2.body.angle < 0.5 else 0.0
-        elif action == 7:  # Close gripper finger 2
-            rotation2 = -0.1
+        elif action == 10:  # Close gripper left finger 2
+            rotation2 = -0.01
             self.gripper.left_finger2.body.angle -= rotation2 if self.gripper.left_finger2.body.angle < 1.5 else 0.0
+        elif action == 11:  # Close gripper right finger 2
+            rotation2 = -0.01
             self.gripper.right_finger2.body.angle += rotation2 if self.gripper.right_finger2.body.angle > -1.5 else 0.0
-        elif action == 8:   # Do nothing
+        elif action == 12:   # Do nothing
             None
 
         # Apply the action to the gripper
@@ -178,7 +188,8 @@ class Environment(gym.Env):
         l_touch = 1.0 if self.gripper.left_finger2.shape.shapes_collide(self.object.shape).points else 0.0
         r_touch = 1.0 if self.gripper.right_finger2.shape.shapes_collide(self.object.shape).points else 0.0
 
-        obs = np.array([ rel_obj_pos.x, rel_obj_pos.y,
+        obs = np.array([ obj.position.x, obj.position.y,
+                                rel_obj_pos.x, rel_obj_pos.y,
                                 rel_obj_vel.x, rel_obj_vel.y,
                                 *finger_feats,                  # 12 values
                                 l_tip_rel.x, l_tip_rel.y,
@@ -193,41 +204,46 @@ class Environment(gym.Env):
 
     def get_reward(self, obs):
 
-        l_touch = obs[21]
-        r_touch = obs[22]
+        r1, r2, r3 = 0,0,0
 
-        r2 = 0
-        r3 = 0
+        # Reward based on height of object if gripper is moving up as well
+        r1 = max(self.object.body.position[1] - 100, 0) if (obs[-6] or obs[-7]) else 0 # self.gripper.arm.body.velocity[1] > 0
 
-        # Reward based on height of object if object below base(can't flick it)
-        r1 = round(max(self.object.body.position[1] - 100, 0), 3) / 300 if self.object.body.position[1] < self.gripper.base.body.position[1] else 0
+        # Reward if left fingertip distance within threshold
+        l_tip_dist = np.linalg.norm(self.gripper.left_finger2.body.local_to_world(self.gripper.left_finger2.shape.b) - self.object.body.position)
+        r_tip_dist = np.linalg.norm(self.gripper.right_finger2.body.local_to_world(self.gripper.right_finger2.shape.b) - self.object.body.position)
 
-        if l_touch and self.left:
+        if l_tip_dist < 50:
             r2 = 1
-            self.left = False
 
-        if r_touch and self.right:
+        if r_tip_dist < 50:
             r3 = 1
-            self.right = False
 
         reward = r1 + r2 + r3
+
+        # Touch Penalties
+        a = 1 if self.gripper.left_finger2.shape.shapes_collide(self.gripper.right_finger2.shape).points else 0.0
+        b = 1 if self.gripper.left_finger2.shape.shapes_collide(self.gripper.right_finger1.shape).points else 0.0
+        c = 1 if self.gripper.left_finger1.shape.shapes_collide(self.gripper.right_finger2.shape).points else 0.0
+
+        # Penalty for fingers below floor
+        d = 1 if self.gripper.left_finger2.body.local_to_world(self.gripper.left_finger2.shape.b)[1] < self.floor.shape.a[1] - 10 else 0
+        e = 1 if self.gripper.right_finger2.body.local_to_world(self.gripper.right_finger2.shape.b)[1] < self.floor.shape.a[1] - 10 else 0
+
+        reward -= (a+b+c+d+e)
 
         done = False
         success = False
 
         # Reward based on success
         if self.object.body.position.y > self.pickup_height and self.gripper.base.body.position.y > self.pickup_height:
-            reward += 100000
+            reward += 10
             print("Success!")
             success = True
             done = True
 
         # Episode termination if max steps reached
         if self.current_step >= self.max_steps:
-            done = True
-
-        # End if object is below the floor
-        if self.object.body.position.y < self.floor.shape.a[1] - 10:
             done = True
 
         return reward, done, success
@@ -239,6 +255,7 @@ class Environment(gym.Env):
         self.object.draw()
         self.floor.draw()
         self.gripper.draw()
+        self.walls.draw()
 
         if mode == "human":
             # first time only, open the OS window
@@ -261,7 +278,7 @@ if __name__ == "__main__":
     N_ENVS = 8  # Number of parallel environments
 
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
-    vertex = [(-30, -30), (30, -30), (30, 30)]
+    vertex = [(-30, -30), (30, -30), (0, 30)]
 
     # Define the policy network architecture
     policy_kwargs = dict(net_arch=[256, 256])
@@ -279,7 +296,6 @@ if __name__ == "__main__":
 
         return _init
 
-
     # Training envs (headless, parallel)
     train_env = SubprocVecEnv([make_env(vertex, i) for i in range(N_ENVS)], start_method="spawn")
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True)
@@ -290,7 +306,7 @@ if __name__ == "__main__":
     eval_env.obs_rms = train_env.obs_rms  # share running stats
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=500000, render=True, verbose=0, deterministic=True)
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=100000, render=True, verbose=0, deterministic=True)
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
@@ -301,10 +317,10 @@ if __name__ == "__main__":
         verbose=0,
         tensorboard_log="./ppo_gripper_tensorboard/",
         policy_kwargs=policy_kwargs,
-        ent_coef=0.05,
+        ent_coef=0.001
     )
 
-    model.learn(total_timesteps=10000000, callback=eval_callback)
+    model.learn(total_timesteps=2000000, callback=eval_callback)
     model.save("models/ppo_pymunk_gripper")
     train_env.save("normalise_stats/vecnormalize_stats.pkl")
     print("Training complete and model saved.")

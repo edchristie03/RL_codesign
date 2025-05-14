@@ -1,5 +1,6 @@
 import pygame
 import pymunk
+import numpy as np
 
 
 from objects import Ball, Poly, Floor
@@ -27,14 +28,35 @@ def game(space, object):
                     gripper.arm.body.velocity = (0, 200)
                 if event.key == pygame.K_DOWN:
                     gripper.arm.body.velocity = (0, -200)
-                if event.key == pygame.K_o:
+                if event.key == pygame.K_x:
                     gripper.left_finger.body.angle -= 0.1 if gripper.left_finger.body.angle > -0.5 else 0.0
-                    gripper.right_finger.body.angle += 0.1 if gripper.left_finger.body.angle > -0.5 else 0.0
                 if event.key == pygame.K_c:
                     gripper.left_finger.body.angle += 0.1 if gripper.left_finger.body.angle < 1 else 0.0
+                if event.key == pygame.K_o:
+                    gripper.right_finger.body.angle += 0.1 if gripper.left_finger.body.angle > -0.5 else 0.0
+                if event.key == pygame.K_p:
                     gripper.right_finger.body.angle -= 0.1 if gripper.left_finger.body.angle < 1 else 0.0
 
-        print(object.body.position[1])
+
+
+            # Reward if left fingertip distance within threshold
+            l_tip_dist = np.linalg.norm(gripper.left_finger.body.local_to_world(gripper.left_finger.shape.b) - object.body.position)
+            r_tip_dist = np.linalg.norm(gripper.right_finger.body.local_to_world(gripper.right_finger.shape.b) - object.body.position)
+
+            if l_tip_dist < 30:
+                r2 = 10
+            else:
+                r2 = 10 - 10 * np.tanh((l_tip_dist - 30) / 100)
+
+            if r_tip_dist < 30:
+                r3 = 1
+            else:
+                r3 = 10 - 10 * np.tanh((r_tip_dist - 30) / 100)
+
+            reward = r2 + r3
+
+            print('Reward:', reward, 'r2', r2, 'r3', r3)
+
 
         # White background
         display.fill((255, 255, 255))

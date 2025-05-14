@@ -8,7 +8,7 @@ class Gripper():
     def __init__(self, space):
 
         # Create the base of the gripper
-        self.base = Base(space)
+        self.base = Base(space, 250)
         # Create the arm
         self.arm = Arm(space, self.base)
         # Create the left finger
@@ -27,7 +27,7 @@ class Gripper2():
     def __init__(self, space):
 
         # Create the base of the gripper
-        self.base = Base(space)
+        self.base = Base(space, 400)
         # Create the arm
         self.arm = Arm(space, self.base)
         # Create the left finger part 1
@@ -76,9 +76,9 @@ class Arm():
         pygame.draw.line(display, (0, 255, 0), (x1, y1), (x2, y2), int(self.shape.radius * 2))
 
 class Base():
-    def __init__(self, space):
+    def __init__(self, space, height):
         self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)
-        self.body.position = (400, 350)
+        self.body.position = (400, height)
         self.shape = pymunk.Segment(self.body, (-100, 0), (100, 0), 5)
         self.shape.density = 1
         space.add(self.body, self.shape)

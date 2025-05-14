@@ -2,7 +2,7 @@ import pygame
 import pymunk
 
 
-from objects import Ball, Poly, Floor
+from objects import Ball, Poly, Floor, Walls
 from grippers import Gripper2
 import objects, grippers
 
@@ -10,6 +10,7 @@ def game(space, object):
 
     floor = Floor(space, 20)
     gripper = Gripper2(space)
+    walls = Walls(space)
 
     while True:
         for event in pygame.event.get():
@@ -45,7 +46,6 @@ def game(space, object):
                     gripper.right_finger2.body.angle -= 0.1 if gripper.right_finger2.body.angle > -1.5 else 0.0
 
 
-
         # White background
         display.fill((255, 255, 255))
 
@@ -53,6 +53,7 @@ def game(space, object):
         object.draw()
         floor.draw()
         gripper.draw()
+        walls.draw()
 
         pygame.display.update()
         clock.tick(FPS)
