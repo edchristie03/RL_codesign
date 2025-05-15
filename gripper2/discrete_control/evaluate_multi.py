@@ -13,15 +13,15 @@ successes = []
 for idx, vertex in enumerate(vertices):
 
     # 1Load the trained policy
-    model = PPO.load(f"models/ppo_pymunk_gripper_A{idx}")
+    model = PPO.load(f"models/ppo_pymunk_gripper_new{idx}")
 
     # Create a fresh env in human‐render mode
-    test_env = DummyVecEnv([lambda: Environment(vertex, render_mode="human")])
-    test_env = VecNormalize.load(f"normalise_stats/vecnormalize_stats_A{idx}.pkl", test_env)
+    test_env = DummyVecEnv([lambda: Environment(vertex, training=False, render_mode="human")])
+    test_env = VecNormalize.load(f"normalise_stats/vecnormalize_stats_new{idx}.pkl", test_env)
     test_env.training = False        # freeze stats, use them consistently
 
     # Run N test episodes
-    N = 10
+    N = 2
     returns = []
     shape_successes = 0
     for ep in range(1, N + 1):

@@ -46,10 +46,6 @@ def game(space, object):
                     gripper.left_finger2.body.angle += 0.1 if gripper.left_finger2.body.angle < 1.5 else 0.0
                     gripper.right_finger2.body.angle -= 0.1 if gripper.right_finger2.body.angle > -1.5 else 0.0
 
-        lowest_point = object.shape.bb.bottom
-        print("Lowest point of the object:", lowest_point)
-
-
         # White background
         display.fill((255, 255, 255))
 

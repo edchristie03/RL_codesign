@@ -11,7 +11,7 @@ class Ball():
         self.body.position = (400, 100)
         self.shape = pymunk.Circle(self.body, radius)
         self.shape.density = 5
-        self.shape.elasticity = 0.5
+        self.shape.elasticity = 0.2
         self.shape.friction = 1.5
         self.body.angular_damping = 0.1
         space.add(self.body, self.shape)
@@ -26,7 +26,7 @@ class Poly():
         self.body.position = (400, 100)
         self.shape = pymunk.Poly(self.body, vertices, radius=0)
         self.shape.density = 5
-        self.shape.elasticity = 0.5
+        self.shape.elasticity = 0.2
         self.shape.friction = 1.5
         space.add(self.body, self.shape)
 

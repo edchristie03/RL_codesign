@@ -53,6 +53,7 @@ class Environment(gym.Env):
         self.max_steps = 2500
         self.current_step = 0
         self.training = training
+        self.lifted = False
 
     def reset(self, seed=None, options=None):
 
@@ -81,6 +82,7 @@ class Environment(gym.Env):
             self.object = Ball(self.space, 30)
 
         self.current_step = 0
+        self.lifted = False
 
         # initial observation and info
         obs = self.get_observation()
@@ -190,45 +192,52 @@ class Environment(gym.Env):
 
     def get_reward(self, obs):
 
-        # # Reward based on height of object if gripper is in contact with either finger
-        # r1 = 30 * max(self.object.body.position[1] - 100, 0) / (self.pickup_height - 100) if (obs[-3] or obs[-4]) else 0
+        # Get the fingertip world position:
+        l_tip = self.gripper.left_finger2.body.local_to_world(self.gripper.left_finger2.shape.b)
+        r_tip = self.gripper.right_finger2.body.local_to_world(self.gripper.right_finger2.shape.b)
 
-        # Reward based on height of object if gripper is moving up
+        # Query distance to surface (positive outside, negative if inside)
+        l_query = self.object.shape.point_query(l_tip)
+        r_query = self.object.shape.point_query(r_tip)
+
+        # Get the unsigned distance (clamp negative to zero if you only care about outside)
+        l_surf_dist = max(l_query.distance, 0.0)
+        r_surf_dist = max(r_query.distance, 0.0)
+
+        # Reward for distance to surface
+        r1 = 10 if l_surf_dist < 20 else 10 - 10 * np.tanh((l_surf_dist - 20) / 100)
+        r2 = 10 if r_surf_dist < 20 else 10 - 10 * np.tanh((r_surf_dist - 20) / 100)
+
+        # Reward is left tip is touching below COM and right tip is touching above COM (or vice versa)
+        r3 = 10 if ((l_tip[1] < self.object.body.position[1] and obs[-4]) and (r_tip[1] > self.object.body.position[1] and obs[-3])) \
+                or ((l_tip[1] > self.object.body.position[1] and obs[-4]) and (r_tip[1] < self.object.body.position[1] and obs[-3])) else 0
+
+        # Reward if both tips touching below COM. Either r3 or r4, can't have both
+        r4 = 10 if (l_tip[1] < self.object.body.position[1] and obs[-4]) and (r_tip[1] < self.object.body.position[1] and obs[-3]) else 0
+
+        # Incremental reward if object is lifted more than 5
+        height_off_floor = self.object.body.position[1] - 100
+        r5 = 0
+        if not self.lifted:
+            if height_off_floor > 5:
+                self.lifted = True
+                r5 = 100
+
+        # Reward based on height of object if under gripper. Diminishes to a max of 100 at the target pickup height
         condition1 = self.object.body.position[1] < self.gripper.base.body.position[1]
         condition2 = self.gripper.left_finger1.body.position[0] < self.object.body.position[0] < self.gripper.right_finger1.body.position[0]
-        r2 = 100 * max(self.object.body.position[1] - 100, 0) / (self.pickup_height - 100) if (condition1 and condition2) else 0
+        norm_height = max(height_off_floor, 0) / (self.pickup_height - 100) if (condition1 and condition2) else 0
+        r6 = 100 * np.tanh(norm_height)
 
-        # Reward if left fingertip distance within threshold
-        l_tip_dist = np.linalg.norm(self.gripper.left_finger2.body.local_to_world(self.gripper.left_finger2.shape.b) - self.object.body.position)
-        r_tip_dist = np.linalg.norm(self.gripper.right_finger2.body.local_to_world(self.gripper.right_finger2.shape.b) - self.object.body.position)
-
-        if l_tip_dist < 40:
-            r3 = 10
-        else:
-            r3 = 10 - 10 * np.tanh((l_tip_dist - 40) / 100)
-
-        if r_tip_dist < 40:
-            r4 = 10
-        else:
-            r4 = 10 - 10 * np.tanh((r_tip_dist - 40) / 100)
-
-
-        l_tip = self.gripper.left_finger2.body.local_to_world(self.gripper.left_finger2.shape.b)[1]
-        r_tip = self.gripper.right_finger2.body.local_to_world(self.gripper.right_finger2.shape.b)[1]
-
-        r6 = 10 if ((l_tip < self.object.body.position[1] and obs[-4]) and (r_tip > self.object.body.position[1] and obs[-3])) \
-                or ((l_tip > self.object.body.position[1] and obs[-4]) and (r_tip < self.object.body.position[1] and obs[-3])) else 0
-
-        reward = (r2 + r3 + r4 + r6)
+        reward = (r1 + r2 + r3 + r4 + r5 + r6)
 
         # Touch Penalties
-        # a = 10 if self.gripper.left_finger2.shape.shapes_collide(self.gripper.right_finger2.shape).points else 0.0
-        b = 10 if self.gripper.left_finger2.shape.shapes_collide(self.gripper.right_finger1.shape).points else 0.0
-        c = 10 if self.gripper.left_finger1.shape.shapes_collide(self.gripper.right_finger2.shape).points else 0.0
+        b = 100 if self.gripper.left_finger2.shape.shapes_collide(self.gripper.right_finger1.shape).points else 0.0
+        c = 100 if self.gripper.left_finger1.shape.shapes_collide(self.gripper.right_finger2.shape).points else 0.0
 
         # Penalty for fingers touching floor
-        d = 10 if self.gripper.left_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
-        e = 10 if self.gripper.right_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
+        d = 50 if self.gripper.left_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
+        e = 50 if self.gripper.right_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
 
         reward -= (b + c + d + e)
 
@@ -336,7 +345,7 @@ if __name__ == "__main__":
         verbose=0,
         tensorboard_log="./ppo_gripper_tensorboard/",
         policy_kwargs=policy_kwargs,
-        ent_coef=0.01,
+        ent_coef=0.05,
         learning_rate=1e-3
     )
 
