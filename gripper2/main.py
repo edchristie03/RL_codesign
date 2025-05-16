@@ -29,22 +29,27 @@ def game(space, object):
                     gripper.arm.body.velocity = (0, 200)
                 if event.key == pygame.K_DOWN:
                     gripper.arm.body.velocity = (0, -200)
-                # Open finger 1
-                if event.key == pygame.K_v:
-                    gripper.left_finger1.body.angle -= 0.1 if gripper.left_finger1.body.angle > -0.5 else 0.0
-                    gripper.right_finger1.body.angle += 0.1 if gripper.right_finger1.body.angle < 0.5 else 0.0
-                # Close finger 1
-                if event.key == pygame.K_c:
+                # Left finger 1
+                if event.key == pygame.K_q:  # open
+                    gripper.left_finger1.body.angle -= 0.1 if gripper.left_finger1.body.angle > -1 else 0.0
+                if event.key == pygame.K_a:  # close
                     gripper.left_finger1.body.angle += 0.1 if gripper.left_finger1.body.angle < 0.7 else 0.0
+                # Right finger 1
+                if event.key == pygame.K_w:  # open
+                    gripper.right_finger1.body.angle += 0.1 if gripper.right_finger1.body.angle < 1 else 0.0
+                if event.key == pygame.K_s:  # close
                     gripper.right_finger1.body.angle -= 0.1 if gripper.right_finger1.body.angle > -0.7 else 0.0
-                # Open finger 2
-                if event.key == pygame.K_p:
+                # Left finger 2
+                if event.key == pygame.K_e:  # open
                     gripper.left_finger2.body.angle -= 0.1 if gripper.left_finger2.body.angle > -0.5 else 0.0
-                    gripper.right_finger2.body.angle += 0.1 if gripper.right_finger2.body.angle < 0.5 else 0.0
-                # Close finger 2
-                if event.key == pygame.K_o:
+                if event.key == pygame.K_d:  # close
                     gripper.left_finger2.body.angle += 0.1 if gripper.left_finger2.body.angle < 1.5 else 0.0
+                # Right finger 2
+                if event.key == pygame.K_r:  # open
+                    gripper.right_finger2.body.angle += 0.1 if gripper.right_finger2.body.angle < 0.5 else 0.0
+                if event.key == pygame.K_f:  # close
                     gripper.right_finger2.body.angle -= 0.1 if gripper.right_finger2.body.angle > -1.5 else 0.0
+
 
         # White background
         display.fill((255, 255, 255))

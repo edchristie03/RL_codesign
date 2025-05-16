@@ -5,6 +5,7 @@ from stable_baselines3.common.monitor import Monitor
 from environment import Environment
 
 
+
 shape_vertices = {
     "Circle":          [],
     "Square":          [(-30, -30), (30, -30), (30, 30), (-30, 30)],
@@ -94,8 +95,8 @@ if __name__ == "__main__":
             learning_rate=1e-3,
         )
 
-        model.learn(total_timesteps=10000000, callback=[eval_callback, best_ckpt])
-        print(f"Training complete and model saved for {shape_name}")
+        model.learn(total_timesteps=7000000, callback=[eval_callback, best_ckpt])
+        print("Training complete and model saved")
 
         train_env.close()
         eval_env.close()

@@ -194,17 +194,11 @@ class Environment(gym.Env):
         l_tip = self.gripper.left_finger2.body.local_to_world(self.gripper.left_finger2.shape.b)
         r_tip = self.gripper.right_finger2.body.local_to_world(self.gripper.right_finger2.shape.b)
 
-        # Query distance to surface (positive outside, negative if inside)
-        l_query = self.object.shape.point_query(l_tip)
-        r_query = self.object.shape.point_query(r_tip)
-
-        # Get the unsigned distance (clamp negative to zero if you only care about outside)
-        l_surf_dist = max(l_query.distance, 0.0)
-        r_surf_dist = max(r_query.distance, 0.0)
+        base_pos = self.gripper.base.body.position
+        base_dist = np.linalg.norm(base_pos - self.object.body.position)
 
         # Reward for distance to surface
-        r1 = 10 if l_surf_dist < 20 else 10 - 10 * np.tanh((l_surf_dist - 20) / 100)
-        r2 = 10 if r_surf_dist < 20 else 10 - 10 * np.tanh((r_surf_dist - 20) / 100)
+        r1 = 10 if base_dist < 130 else 10 - 10 * np.tanh((base_dist - 130) / 100)
 
         # Reward is left tip is touching below COM and right tip is touching above COM (or vice versa)
         r3 = 10 if ((l_tip[1] < self.object.body.position[1] and obs[-4]) and (r_tip[1] > self.object.body.position[1] and obs[-3])) \
@@ -225,10 +219,10 @@ class Environment(gym.Env):
         condition3 = self.object.body.position[1] > left_finger_lowest_point or self.object.body.position[1] > right_finger_lowest_point
         norm_height = max(height_off_floor, 0) / (self.pickup_height - 100)
 
-        r5 = 20 * np.tanh(15*norm_height) if condition1 and condition2 else 0
+        # r5 = 20 * np.tanh(15*norm_height) if condition1 and condition2 else 0
         r6 = 100 * np.tanh(norm_height) if (condition1 and condition2 and condition3) else 0
 
-        reward = (r1 + r2 + r3 + r4 + r5 + r6)
+        reward = (r1 + r3 + r4 + r6)
 
         # Touch Penalties
         b = 100 if self.gripper.left_finger2.shape.shapes_collide(self.gripper.right_finger1.shape).points else 0.0
@@ -283,11 +277,10 @@ if __name__ == "__main__":
     N_ENVS = 8  # Number of parallel environments
 
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
-    vertex = []  # [(-30, -30), (30, -30), (0, 30)]
+    vertex = [(-30, -30), (30, -30), (0, 30)]
 
     # Define the policy network architecture
-    policy_kwargs = {'net_arch': [256, 256], "log_std_init": 2}
-
+    policy_kwargs = {'net_arch':[256, 256], "log_std_init": 2}
 
     def make_env(vertex, rank, render=False):
         """
@@ -343,8 +336,7 @@ if __name__ == "__main__":
     eval_env.obs_rms = train_env.obs_rms  # share running stats
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=1000000, render=True, verbose=0,
-                                 deterministic=True)
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=1000000, render=True, verbose=0, deterministic=True)
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
@@ -359,7 +351,7 @@ if __name__ == "__main__":
         learning_rate=1e-3,
     )
 
-    model.learn(total_timesteps=10000000, callback=[eval_callback, best_ckpt])
+    model.learn(total_timesteps=7000000, callback=[eval_callback, best_ckpt])
     # model.save(f"models/ppo_pymunk_gripper_new{idx}")
     # train_env.save(f"normalise_stats/vecnormalize_stats_best.pkl")
     print("Training complete and model saved")
