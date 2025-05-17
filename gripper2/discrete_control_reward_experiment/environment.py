@@ -322,7 +322,7 @@ if __name__ == "__main__":
     best_ckpt = SaveBestWithStats(
         eval_env_fast,
         vecnormalize=train_env,
-        best_model_save_path=f"models/ppo_pymunk_gripper_best",
+        best_model_save_path=f"models",
         n_eval_episodes=5,
         eval_freq=25_000,
         deterministic=True,
