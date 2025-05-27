@@ -28,7 +28,7 @@ for shape_name, vertex in shape_vertices.items():
     test_env.training = False        # freeze stats, use them consistently
 
     # Run N test episodes
-    N = 3
+    N = 10
     returns = []
     shape_successes = 0
     for ep in range(1, N + 1):
