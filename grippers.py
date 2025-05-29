@@ -5,10 +5,10 @@ def convert_coordinates(point):
     return int(point.x), 800 - int(point.y)
 
 class Gripper():
-    def __init__(self, space):
+    def __init__(self, space, base_width=200):
 
         # Create the base of the gripper
-        self.base = Base(space, 250)
+        self.base = Base(space, 250, base_width)
         # Create the arm
         self.arm = Arm(space, self.base)
         # Create the left finger
@@ -24,20 +24,26 @@ class Gripper():
         self.right_finger.draw()
 
 class Gripper2():
-    def __init__(self, space):
+    def __init__(self, space, design_vector=(200, 120, 120, 120, 120)):
+
+        base_width = design_vector[0]
+        lf1_length = design_vector[1]
+        rf1_length = design_vector[2]
+        lf2_length = design_vector[3]
+        rf2_length = design_vector[4]
 
         # Create the base of the gripper
-        self.base = Base(space, 400)
+        self.base = Base(space, 400, base_width)
         # Create the arm
         self.arm = Arm(space, self.base)
         # Create the left finger part 1
-        self.left_finger1 = Finger1(space, self.base.body.local_to_world(self.base.shape.a), self.base, side='left')
+        self.left_finger1 = Finger1(space, self.base.body.local_to_world(self.base.shape.a), self.base, lf1_length, side='left')
         # Create the left finger part 2
-        self.left_finger2 = Finger2(space, self.left_finger1.body.local_to_world(self.left_finger1.shape.b), self.left_finger1)
+        self.left_finger2 = Finger2(space, self.left_finger1.body.local_to_world(self.left_finger1.shape.b), lf2_length, self.left_finger1)
         # Create the right finger part 1
-        self.right_finger1 = Finger1(space, self.base.body.local_to_world(self.base.shape.b), self.base, side='right')
+        self.right_finger1 = Finger1(space, self.base.body.local_to_world(self.base.shape.b), self.base, rf1_length, side='right')
         # Create the right finger part 2
-        self.right_finger2 = Finger2(space, self.right_finger1.body.local_to_world(self.right_finger1.shape.b), self.right_finger1)
+        self.right_finger2 = Finger2(space, self.right_finger1.body.local_to_world(self.right_finger1.shape.b), rf2_length, self.right_finger1)
 
     def draw(self):
         # Draw
@@ -76,10 +82,10 @@ class Arm():
         pygame.draw.line(display, (0, 255, 0), (x1, y1), (x2, y2), int(self.shape.radius * 2))
 
 class Base():
-    def __init__(self, space, height):
+    def __init__(self, space, height, base_width):
         self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)
         self.body.position = (400, height)
-        self.shape = pymunk.Segment(self.body, (-100, 0), (100, 0), 5)
+        self.shape = pymunk.Segment(self.body, (-base_width/2, 0), (base_width/2, 0), 5)
         self.shape.density = 1
         space.add(self.body, self.shape)
 
@@ -94,10 +100,10 @@ class Base():
         pygame.draw.line(display, (255, 0, 0), (x1, y1), (x2, y2), int(self.shape.radius * 2))
 
 class Finger1():
-    def __init__(self, space, anchor, base, side='left'):
+    def __init__(self, space, anchor, base, length, side='left'):
         self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)
         self.body.position = anchor
-        self.shape = pymunk.Segment(self.body, (0, 0), (0, -120), 5)
+        self.shape = pymunk.Segment(self.body, (0, 0), (0, -length), 5)
         self.shape.density = 1
         self.shape.friction = 1.5
         space.add(self.body, self.shape)
@@ -129,10 +135,10 @@ class Finger1():
         pygame.draw.line(display, (0, 255, 0), (x1, y1), (x2, y2), int(self.shape.radius * 2))
 
 class Finger2():
-    def __init__(self, space, anchor, finger_above):
+    def __init__(self, space, anchor, length, finger_above):
         self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)
         self.body.position = anchor
-        self.shape = pymunk.Segment(self.body, (0, 0), (0, -100), 5)
+        self.shape = pymunk.Segment(self.body, (0, 0), (0, -length), 5)
         self.shape.density = 1
         self.shape.friction = 1.5
         space.add(self.body, self.shape)
