@@ -29,8 +29,7 @@ BOUNDS = np.array([
 # Initial mean (center of search space)
 INITIAL_MEAN = np.mean(BOUNDS, axis=1)
 
-
-def train(id, design_vector, generation):
+def train(id, design_vector, generation, experiment_id):
     """Train a PPO model for a given design vector"""
     N_ENVS = 8  # Number of parallel environments
 
@@ -49,18 +48,20 @@ def train(id, design_vector, generation):
         return _init
 
     class SaveBestWithStats(EvalCallback):
-        def __init__(self, *args, vecnormalize, **kwargs):
+        def __init__(self, *args, vecnormalize, experiment_id, **kwargs):
             super().__init__(*args, **kwargs)
             self.vecnormalize = vecnormalize  # the training wrapper
+            self.experiment_id = experiment_id  # store experiment ID for saving
 
         def _on_step(self) -> bool:
             # run the usual evaluation logic
             old_reward = self.best_mean_reward
             continue_training = super()._on_step()
 
-            if self.best_mean_reward > old_reward:  # new best just saved
-                os.makedirs("normalise_stats", exist_ok=True)
-                self.vecnormalize.save(f"normalise_stats/vecnormalize_stats_{shape_name}_Gen{generation}_ID_{id}.pkl")
+            if self.best_mean_reward > old_reward:
+                stats_dir = f"Experiments/{self.experiment_id}/normalise_stats"
+                os.makedirs(stats_dir, exist_ok=True)
+                self.vecnormalize.save(f"{stats_dir}/vecnormalize_stats_{shape_name}_Gen{generation}_ID_{id}.pkl")
 
             return continue_training
 
@@ -73,11 +74,13 @@ def train(id, design_vector, generation):
     eval_env_fast = VecNormalize(eval_env_fast, norm_obs=True, norm_reward=False, training=False)
     eval_env_fast.obs_rms = train_env.obs_rms
 
-    os.makedirs(f"models/{shape_name}_Gen{generation}_ID_{id}", exist_ok=True)
+    models_dir = f"Experiments/{experiment_id}/models/{shape_name}_Gen{generation}_ID_{id}"
+    os.makedirs(models_dir, exist_ok=True)
     best_ckpt = SaveBestWithStats(
         eval_env_fast,
         vecnormalize=train_env,
-        best_model_save_path=f"models/{shape_name}_Gen{generation}_ID_{id}",
+        experiment_id=experiment_id,
+        best_model_save_path=models_dir,
         n_eval_episodes=10,
         eval_freq=20_000,
         deterministic=True,
@@ -101,29 +104,28 @@ def train(id, design_vector, generation):
         n_steps=256,  # 256 × 8 = 2048 steps / update
         batch_size=512,  # must divide N_ENVS × N_STEPS
         verbose=0,
-        tensorboard_log="./ppo_gripper_tensorboard/",
+        tensorboard_log=f"Experiments/{experiment_id}/ppo_gripper_tensorboard/",
         policy_kwargs=policy_kwargs,
         ent_coef=0.05,
         learning_rate=1e-3,
     )
 
-    model.learn(total_timesteps=3000000, callback=[eval_callback, best_ckpt])
+    model.learn(total_timesteps=5000000, callback=[eval_callback, best_ckpt])
     print(f"Training complete and model saved for Gen{generation}_ID{id}")
 
     train_env.close()
     eval_env.close()
 
-
-def evaluate_model(id, design_vector, generation):
+def evaluate_model(id, design_vector, generation, experiment_id):
     """Evaluate a trained model and return fitness score"""
     # Load the trained policy
-    model = PPO.load(f"models/{shape_name}_Gen{generation}_ID_{id}/best_model")
+    model_path = f"Experiments/{experiment_id}/models/{shape_name}_Gen{generation}_ID_{id}/best_model"
+    model = PPO.load(model_path)
 
     # Create a fresh env in human‐render mode
-    test_env = DummyVecEnv(
-        [lambda: Environment(vertex, training=False, render_mode="human", design_vector=design_vector)])
-    test_env = VecNormalize.load(f"normalise_stats/vecnormalize_stats_{shape_name}_Gen{generation}_ID_{id}.pkl",
-                                 test_env)
+    stats_path = f"Experiments/{experiment_id}/normalise_stats/vecnormalize_stats_{shape_name}_Gen{generation}_ID_{id}.pkl"
+    test_env = DummyVecEnv([lambda: Environment(vertex, training=False, render_mode="human", design_vector=design_vector)])
+    test_env = VecNormalize.load(stats_path, test_env)
     test_env.training = False  # freeze stats, use them consistently
 
     # Run N test episodes
@@ -157,13 +159,11 @@ def evaluate_model(id, design_vector, generation):
     test_env.close()
     return fitness
 
-
 def clip_to_bounds(x, bounds):
     """Clip solution to bounds"""
     return np.clip(x, bounds[:, 0], bounds[:, 1])
 
-
-def objective_function(design_vector, generation, id):
+def objective_function(design_vector, generation, id, experiment_id):
     """
     Objective function for CMA-ES optimization.
     Returns negative fitness since CMA-ES minimizes.
@@ -175,20 +175,19 @@ def objective_function(design_vector, generation, id):
     print(f"Evaluating Gen{generation}_ID{id} with design: {rounded_design}")
 
     # Train the model
-    train(id, rounded_design, generation)
+    train(id, rounded_design, generation, experiment_id)
 
     # Evaluate the model
-    fitness = evaluate_model(id, rounded_design, generation)
+    fitness = evaluate_model(id, rounded_design, generation, experiment_id)
 
     print(f"Gen{generation}_ID{id} - Fitness: {fitness:.2f}")
 
     # Return negative fitness (CMA-ES minimizes)
     return -fitness
 
-
-def save_generation_data(generation, population, fitness_values, best_individual, best_fitness, best_id, es):
+def save_generation_data(generation, population, fitness_values, best_individual, best_fitness, best_id, es, experiment_id):
     """Save generation data to file"""
-    os.makedirs("evolution_data", exist_ok=True)
+    os.makedirs(f"Experiments/{experiment_id}/evolution_data", exist_ok=True)
 
     data = {
         'generation': generation,
@@ -202,11 +201,11 @@ def save_generation_data(generation, population, fitness_values, best_individual
         'timestamp': datetime.now().isoformat()
     }
 
-    with open(f"evolution_data/generation_{generation}.pkl", 'wb') as f:
+    with open(f"Experiments/{experiment_id}/evolution_data/generation_{generation}.pkl", 'wb') as f:
         pickle.dump(data, f)
 
+def cmaes_optimization(experiment_id):
 
-def cmaes_optimization():
     """Main CMA-ES optimization loop"""
     # Calculate total evaluations based on generations
     total_evaluations = LAMBDA * MAX_GENERATIONS
@@ -256,7 +255,7 @@ def cmaes_optimization():
             print(f"  Individual {i + 1}/{len(solutions)}")
 
             # Evaluate this solution
-            fitness = objective_function(solution, generation, i)
+            fitness = objective_function(solution, generation, i, experiment_id)
             fitness_values.append(fitness)
 
             # Update global best (remember fitness is negative in CMA-ES)
@@ -293,7 +292,7 @@ def cmaes_optimization():
 
         # Save generation data
         save_generation_data(generation, np.array(solutions),
-                             np.array(actual_fitnesses), gen_best_individual, gen_best_fitness, gen_best_id, es)
+                             np.array(actual_fitnesses), gen_best_individual, gen_best_fitness, gen_best_id, es, experiment_id)
 
     # Final results
     print("\n" + "=" * 60)
@@ -341,26 +340,24 @@ def cmaes_optimization():
         }
     }
 
-    with open("evolution_data/final_results_cmaes.pkl", 'wb') as f:
+    with open(f"Experiments/{experiment_id}/evolution_data/final_results_cmaes.pkl", 'wb') as f:
         pickle.dump(final_results, f)
 
     return global_best_individual, global_best_fitness, global_best_generation, global_best_id
 
-
-def test_best_design(design_vector, generation, id):
+def test_best_design(design_vector, generation, id, experiment_id):
     """Test the best design with visual rendering"""
     print(f"\n=== Testing Best Design Visually ===")
     rounded_design = tuple(round(x, 0) for x in design_vector)
     print(f"Design: {rounded_design}")
 
     # Load the trained policy
-    model = PPO.load(f"models/{shape_name}_Gen{generation}_ID_{id}/best_model")
+    model = PPO.load(f"Experiments/{experiment_id}/models/{shape_name}_Gen{generation}_ID_{id}/best_model")
 
     # Create a fresh env in human‐render mode
-    test_env = DummyVecEnv(
-        [lambda: Environment(vertex, training=False, render_mode="human", design_vector=rounded_design)])
-    test_env = VecNormalize.load(f"normalise_stats/vecnormalize_stats_{shape_name}_Gen{generation}_ID_{id}.pkl",
-                                 test_env)
+    test_env = DummyVecEnv([lambda: Environment(vertex, training=False, render_mode="human", design_vector=rounded_design)])
+    stats_path = f"Experiments/{experiment_id}/normalise_stats/vecnormalize_stats_{shape_name}_Gen{generation}_ID_{id}.pkl"
+    test_env = VecNormalize.load(stats_path, test_env)
     test_env.training = False
 
     # Run test episodes
@@ -381,11 +378,10 @@ def test_best_design(design_vector, generation, id):
 
     test_env.close()
 
-
-def analyze_cmaes_results():
+def analyze_cmaes_results(experiment_id):
     """Analyze and visualize CMA-ES optimization results"""
     try:
-        with open("evolution_data/final_results_cmaes.pkl", 'rb') as f:
+        with open(f"Experiments/{experiment_id}/evolution_data/final_results_cmaes.pkl", 'rb') as f:
             results = pickle.load(f)
 
         print("\n=== CMA-ES Results Analysis ===")
@@ -400,7 +396,7 @@ def analyze_cmaes_results():
         print(f"Final mean: {[round(x, 1) for x in results['final_mean']]}")
 
         # Load generation data for progression analysis
-        generation_files = [f for f in os.listdir("evolution_data") if
+        generation_files = [f for f in os.listdir(f"Experiments/{experiment_id}/evolution_data") if
                             f.startswith("generation_") and f.endswith(".pkl")]
         generation_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
 
@@ -410,7 +406,7 @@ def analyze_cmaes_results():
             print("-" * 75)
 
             for gen_file in generation_files:
-                with open(f"evolution_data/{gen_file}", 'rb') as f:
+                with open(f"Experiments/{experiment_id}/evolution_data/{gen_file}", 'rb') as f:
                     gen_data = pickle.load(f)
 
                 gen_num = gen_data['generation']
@@ -431,36 +427,14 @@ def analyze_cmaes_results():
     except FileNotFoundError:
         print("No CMA-ES results found. Run the optimization first.")
 
-
-def resume_optimization_from_generation(start_generation):
-    """
-    Resume optimization from a specific generation.
-    Useful if optimization was interrupted.
-    """
-    try:
-        # Load the generation data
-        with open(f"evolution_data/generation_{start_generation}.pkl", 'rb') as f:
-            gen_data = pickle.load(f)
-
-        print(f"Resuming optimization from generation {start_generation}")
-        print(f"Previous best fitness: {gen_data['best_fitness']:.2f}")
-
-        # You would need to reconstruct the CMA-ES state here
-        # This is more complex and depends on your specific needs
-        print("Note: Full resume functionality would require saving/loading CMA-ES state")
-
-    except FileNotFoundError:
-        print(f"Generation {start_generation} data not found")
-
-
-def load_and_test_best_model():
+def load_and_test_best_model(experiment_id):
     """
     Load the best model from CMA-ES optimization and test it visually.
     This function can be run independently after optimization is complete.
     """
     try:
         # Load the final results
-        with open("evolution_data/final_results_cmaes.pkl", 'rb') as f:
+        with open(f"Experiments/{experiment_id}/evolution_data/final_results_cmaes.pkl", 'rb') as f:
             results = pickle.load(f)
 
         best_fitness = results['global_best_fitness']
@@ -475,8 +449,8 @@ def load_and_test_best_model():
         print(f"Model ID: {best_id}")
 
         # Check if model files exist
-        model_path = f"models/{shape_name}_Gen{best_generation}_ID_{best_id}/best_model.zip"
-        stats_path = f"normalise_stats/vecnormalize_stats_{shape_name}_Gen{best_generation}_ID_{best_id}.pkl"
+        model_path = f"Experiments/{experiment_id}/models/{shape_name}_Gen{best_generation}_ID_{best_id}/best_model.zip"
+        stats_path = f"Experiments/{experiment_id}/normalise_stats/vecnormalize_stats_{shape_name}_Gen{best_generation}_ID_{best_id}.pkl"
 
         if not os.path.exists(model_path):
             print(f"ERROR: Model file not found: {model_path}")
@@ -490,7 +464,7 @@ def load_and_test_best_model():
         print(f"Stats path: {stats_path}")
 
         # Test the best design
-        test_best_design(best_individual, best_generation, best_id)
+        test_best_design(best_individual, best_generation, best_id, experiment_id)
 
         return best_individual, best_fitness, best_generation, best_id
 
@@ -502,14 +476,13 @@ def load_and_test_best_model():
         print(f"ERROR: Unexpected error loading best model: {e}")
         return None
 
-
-def get_best_model_info():
+def get_best_model_info(experiment_id):
     """
     Get information about the best model without running visual tests.
     Useful for checking results without opening rendering windows.
     """
     try:
-        with open("evolution_data/final_results_cmaes.pkl", 'rb') as f:
+        with open(f"Experiments/{experiment_id}/evolution_data/final_results_cmaes.pkl", 'rb') as f:
             results = pickle.load(f)
 
         best_info = {
@@ -519,8 +492,8 @@ def get_best_model_info():
             'id': results['global_best_id'],
             'completed_generations': results['completed_generations'],
             'planned_generations': results['planned_generations'],
-            'model_path': f"models/{shape_name}_Gen{results['global_best_generation']}_ID_{results['global_best_id']}/best_model.zip",
-            'stats_path': f"normalise_stats/vecnormalize_stats_{shape_name}_Gen{results['global_best_generation']}_ID_{results['global_best_id']}.pkl"
+            'model_path': f"Experiments/{experiment_id}/models/{shape_name}_Gen{results['global_best_generation']}_ID_{results['global_best_id']}/best_model.zip",
+            'stats_path': f"Experiments/{experiment_id}/normalise_stats/vecnormalize_stats_{shape_name}_Gen{results['global_best_generation']}_ID_{results['global_best_id']}.pkl"
         }
 
         return best_info
@@ -529,23 +502,54 @@ def get_best_model_info():
         print("No CMA-ES results found. Run optimization first.")
         return None
 
+def get_next_experiment_id():
+    """
+    Get the next experiment ID based on existing directories.
+    This assumes directories are named as 'Experiments/{id}'.
+    """
+    if not os.path.exists("Experiments"):
+        os.makedirs("Experiments")
+        return 1
+
+    existing_ids = [int(f) for f in os.listdir("Experiments")]
+    return max(existing_ids, default=0) + 1
 
 if __name__ == "__main__":
     # Choose what to run:
+    # Option 1: Run full CMA-ES optimization
+    # Option 2: Load and test best model after optimization
+    # Option 3: Just get best model info without running anything
 
-    # # Option 1: Run full CMA-ES optimization (comment out to skip)
-    best_design, best_fitness, best_generation, best_id = cmaes_optimization()
-    analyze_cmaes_results()
+    OPTION = 1  # Change this to 1, 2, or 3 as needed
 
-    # Option 2: Load and test best model (uncomment to use after optimization)
-    # load_and_test_best_model()
+    if OPTION == 1:
+        # Run full CMA-ES optimization
+        experiment_id = get_next_experiment_id()
+        best_design, best_fitness, best_generation, best_id = cmaes_optimization(experiment_id)
+        analyze_cmaes_results(experiment_id)
+    elif OPTION == 2:
+        # Option 2: Load and test best model from most recent experiment
+        experiment_id = get_next_experiment_id() - 1
+        load_and_test_best_model(experiment_id)
+    elif OPTION == 3:
+        # Option 3: Just get best model info from most recent experiment
+        experiment_id = get_next_experiment_id() - 1
+        info = get_best_model_info(experiment_id)
+        if info:
+            print(f"Best design: {info['design']}")
+            print(f"Best fitness: {info['fitness']:.2f}")
+            print(f"Completed: {info['completed_generations']}/{info['planned_generations']} generations")
+            print(f"Model path: {info['model_path']}")
+            print(f"Stats path: {info['stats_path']}")
 
-    # Option 3: Just get best model info (uncomment to use)
-    # info = get_best_model_info()
-    # if info:
-    #     print(f"Best design: {info['design']}")
-    #     print(f"Best fitness: {info['fitness']:.2f}")
-    #     print(f"Completed: {info['completed_generations']}/{info['planned_generations']} generations")
-    #     print(f"Model path: {info['model_path']}")
-    #     print(f"Stats path: {info['stats_path']}")
+
+
+
+
+
+
+
+
+
+
 
