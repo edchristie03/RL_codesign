@@ -32,8 +32,10 @@ class Gripper2():
         lf2_length = design_vector[3]
         rf2_length = design_vector[4]
 
+        height = max(lf1_length + lf2_length, rf1_length + rf2_length) + 150
+
         # Create the base of the gripper
-        self.base = Base(space, 400, base_width)
+        self.base = Base(space, height, base_width)
         # Create the arm
         self.arm = Arm(space, self.base)
         # Create the left finger part 1

@@ -362,8 +362,6 @@ if __name__ == "__main__":
     )
 
     model.learn(total_timesteps=5000000, callback=[eval_callback, best_ckpt])
-    # model.save(f"models/ppo_pymunk_gripper_new{idx}")
-    # train_env.save(f"normalise_stats/vecnormalize_stats_best.pkl")
     print("Training complete and model saved")
 
     train_env.close()
