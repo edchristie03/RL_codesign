@@ -283,7 +283,7 @@ if __name__ == "__main__":
     N_ENVS = 8  # Number of parallel environments
 
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
-    vertex = []  # [(-30, -30), (30, -30), (0, 30)]
+    vertex = [(-30, -30), (30, -30), (0, 30)]
 
     # Define the policy network architecture
     policy_kwargs = {'net_arch': [256, 256], "log_std_init": 2}
@@ -331,7 +331,7 @@ if __name__ == "__main__":
         vecnormalize=train_env,
         best_model_save_path=f"models/ppo_pymunk_gripper_best",
         n_eval_episodes=5,
-        eval_freq=25_000,
+        eval_freq=10_000,
         deterministic=True,
         render=False,
         verbose=0,
@@ -343,7 +343,7 @@ if __name__ == "__main__":
     eval_env.obs_rms = train_env.obs_rms  # share running stats
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=1000000, render=True, verbose=0,
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=50000, render=True, verbose=0,
                                  deterministic=True)
 
     # Instantiate PPO on the train_env, pass the callback to learn()
