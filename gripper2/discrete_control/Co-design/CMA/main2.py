@@ -9,12 +9,13 @@ import os
 from datetime import datetime
 import cma
 
-shape_name, vertex = "Equi Triangle", [(-30, -30), (30, -30), (0, 30)]
+shape_name, vertex = "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] # "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)]
+
 
 # CMA-ES Parameters
-LAMBDA = 12  # Population size (offspring per generation)
-SIGMA0 = 30.0  # Initial standard deviation
-MAX_GENERATIONS = 5  # Maximum number of complete generations
+LAMBDA = 10  # Population size (offspring per generation)
+SIGMA0 = 20  # Initial standard deviation
+MAX_GENERATIONS = 10  # Maximum number of complete generations
 # MAX_EVALUATIONS will be calculated as LAMBDA * MAX_GENERATIONS
 
 # Design vector bounds
@@ -82,7 +83,7 @@ def train(id, design_vector, generation, experiment_id):
         experiment_id=experiment_id,
         best_model_save_path=models_dir,
         n_eval_episodes=10,
-        eval_freq=20_000,
+        eval_freq=25000,
         deterministic=True,
         render=False,
         verbose=0,
@@ -94,7 +95,7 @@ def train(id, design_vector, generation, experiment_id):
     eval_env.obs_rms = train_env.obs_rms  # share running stats
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=100000, render=True, verbose=0,
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000000, render=True, verbose=0,
                                  deterministic=True)
 
     # Instantiate PPO on the train_env, pass the callback to learn()
@@ -110,7 +111,7 @@ def train(id, design_vector, generation, experiment_id):
         learning_rate=1e-3,
     )
 
-    model.learn(total_timesteps=5000000, callback=[eval_callback, best_ckpt])
+    model.learn(total_timesteps=3000000, callback=[eval_callback, best_ckpt])
     print(f"Training complete and model saved for Gen{generation}_ID{id}")
 
     train_env.close()
@@ -143,7 +144,7 @@ def evaluate_model(id, design_vector, generation, experiment_id):
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = test_env.step(action)
             total_reward += reward
-            test_env.render()  if ep == 1 else None
+            test_env.render()  if ep == 0 else None
 
             if info[0].get('success', False):
                 success_count += 1
@@ -520,7 +521,7 @@ if __name__ == "__main__":
     # Option 2: Load and test best model after optimization
     # Option 3: Just get best model info without running anything
 
-    OPTION = 1  # Change this to 1, 2, or 3 as needed
+    OPTION = 3  # Change this to 1, 2, or 3 as needed
 
     if OPTION == 1:
         # Run full CMA-ES optimization
@@ -541,6 +542,9 @@ if __name__ == "__main__":
             print(f"Completed: {info['completed_generations']}/{info['planned_generations']} generations")
             print(f"Model path: {info['model_path']}")
             print(f"Stats path: {info['stats_path']}")
+            print()
+
+        analyze_cmaes_results(experiment_id)
 
 
 
