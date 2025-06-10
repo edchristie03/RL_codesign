@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 import cma
 
-shape_name, vertex = "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] # "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)]
+shape_name, vertex = "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] # "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] #
 
 
 # CMA-ES Parameters
@@ -521,7 +521,7 @@ if __name__ == "__main__":
     # Option 2: Load and test best model after optimization
     # Option 3: Just get best model info without running anything
 
-    OPTION = 3  # Change this to 1, 2, or 3 as needed
+    OPTION = 2  # Change this to 1, 2, or 3 as needed
 
     if OPTION == 1:
         # Run full CMA-ES optimization

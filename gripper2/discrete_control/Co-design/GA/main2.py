@@ -397,12 +397,13 @@ import numpy as np
 import pickle
 import os
 from datetime import datetime
+from natsort import natsorted
 
-shape_name, vertex = "Equi Triangle", [(-30, -30), (30, -30), (0, 30)]
+shape_name, vertex =  "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] # "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] #
 
 # Evolutionary Algorithm Parameters
 POPULATION_SIZE = 10
-NUM_GENERATIONS = 5
+NUM_GENERATIONS = 10
 MUTATION_RATE = 0.2
 CROSSOVER_RATE = 0.7
 ELITE_SIZE = 2  # Number of best individuals to keep unchanged
@@ -681,6 +682,7 @@ def evolutionary_algorithm(experiment_id):
 
         # Print generation statistics
         fitnesses = [individual[1][1] for individual in sorted_population]
+
         print(f"\nGeneration {generation + 1} Statistics:")
         print(f"Best fitness: {max(fitnesses):.2f}")
         print(f"Average fitness: {np.mean(fitnesses):.2f}")
@@ -946,8 +948,9 @@ if __name__ == "__main__":
     # Option 1: Run full GA optimization
     # Option 2: Load and test best model after optimization
     # Option 3: Just get best model info without running anything
+    # Option 4: Analyze and visualize best result from each generation
 
-    OPTION = 1  # Change this to 1, 2, or 3 as needed
+    OPTION = 4  # Change this to 1, 2, or 3 as needed
 
     if OPTION == 1:
         # Run full GA optimization
@@ -980,3 +983,37 @@ if __name__ == "__main__":
                 print()
 
             analyze_ga_results(experiment_id)
+
+    elif OPTION == 4:
+        # Option 4: Analyze and visualize best result from each generation
+
+        experiment_id = 1 #get_next_experiment_id() - 1
+
+        files = os.listdir(f"Experiments/{experiment_id}/evolution_data")
+        files_sorted = natsorted(files)
+
+        for f in files_sorted:
+            if f.startswith("generation_") and f.endswith(".pkl"):
+
+                with open(f"Experiments/{experiment_id}/evolution_data/{f}", 'rb') as file:
+                    data = pickle.load(file)
+
+                best_fitness = data['best_fitness']
+                best_individual = tuple(data['best_individual'])
+                generation = data['generation']
+                best_id = data['best_id']
+
+                print("\n" + "=" * 50)
+                print(f"=== Best model from Generation {generation} ===")
+                print(f"Best fitness: {best_fitness:.2f}")
+                print(f"Best design: {best_individual}")
+                print(f"Model ID: {best_id}")
+
+                # Test the best design
+                test_best_design(best_individual, generation, best_id, experiment_id)
+
+
+
+
+
+

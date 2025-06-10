@@ -79,7 +79,7 @@ if __name__ == "__main__":
         clock = pygame.time.Clock()
         space = pymunk.Space()
         space.gravity = (0, -1000)  # gravity
-        FPS = 60
+        FPS = 200
 
         if vertex:
             object = Poly(space, vertex)

@@ -219,26 +219,23 @@ class Environment(gym.Env):
         height_off_floor = self.object.body.position[1] - 100
 
         # Reward based on height of object if under gripper. Diminishes to a max of 100 at the target pickup height
-        obj_lowest_point = self.object.shape.bb.bottom
-        left_finger_lowest_point = self.gripper.left_finger2.shape.bb.bottom
-        right_finger_lowest_point = self.gripper.right_finger2.shape.bb.bottom
         condition1 = self.object.body.position[1] < self.gripper.base.body.position[1]
         condition2 = self.gripper.left_finger1.body.position[0] < self.object.body.position[0] < self.gripper.right_finger1.body.position[0]
-        condition3 = self.object.body.position[1] > left_finger_lowest_point or self.object.body.position[1] > right_finger_lowest_point
+
         norm_height = max(height_off_floor, 0) / (self.pickup_height - 100)
 
-        r5 = 20 * np.tanh(15*norm_height) if condition1 and condition2 else 0
-        r6 = 100 * np.tanh(norm_height) if (condition1 and condition2 and condition3) else 0
 
-        reward = (r1 + r2 + r3 + r4 + r5 + r6)
+        r6 = 100 * np.tanh(norm_height) if (condition1 and condition2) else 0
+
+        reward = (r1 + r2 + r3 + r4 + r6)
 
         # Touch Penalties
-        b = 100 if self.gripper.left_finger2.shape.shapes_collide(self.gripper.right_finger1.shape).points else 0.0
-        c = 100 if self.gripper.left_finger1.shape.shapes_collide(self.gripper.right_finger2.shape).points else 0.0
+        b = 10 if self.gripper.left_finger2.shape.shapes_collide(self.gripper.right_finger1.shape).points else 0.0
+        c = 10 if self.gripper.left_finger1.shape.shapes_collide(self.gripper.right_finger2.shape).points else 0.0
 
         # Penalty for fingers touching floor
-        d = 50 if self.gripper.left_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
-        e = 50 if self.gripper.right_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
+        d = 10 if self.gripper.left_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
+        e = 10 if self.gripper.right_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
 
         reward -= (b + c + d + e)
 
@@ -249,7 +246,7 @@ class Environment(gym.Env):
         if self.current_step >= self.max_steps:
             done = True
             # Reward based on success
-            if self.object.body.position.y > self.pickup_height - 100 and self.gripper.base.body.position.y > self.pickup_height - 100:
+            if self.object.body.position.y > self.pickup_height - 100 and condition1 and condition2:
                 success = True
                 print("Success!")
 

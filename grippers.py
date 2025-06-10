@@ -26,6 +26,7 @@ class Gripper():
 class Gripper2():
     def __init__(self, space, design_vector=(200, 120, 120, 120, 120)):
 
+
         base_width = design_vector[0]
         lf1_length = design_vector[1]
         rf1_length = design_vector[2]
