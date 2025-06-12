@@ -2,10 +2,9 @@ import pygame
 import pymunk
 import numpy as np
 
-
-from objects import Ball, Poly, Floor
-from grippers import Gripper
-import objects, grippers
+from ..objects import Ball, Poly, Floor
+from ..grippers import Gripper
+from .. import objects, grippers
 
 def game(space, object):
 
@@ -36,27 +35,6 @@ def game(space, object):
                     gripper.right_finger.body.angle += 0.1 if gripper.right_finger.body.angle > -0.5 else 0.0
                 if event.key == pygame.K_p:
                     gripper.right_finger.body.angle -= 0.1 if gripper.right_finger.body.angle < 1 else 0.0
-
-
-
-            # Reward if left fingertip distance within threshold
-            l_tip_dist = np.linalg.norm(gripper.left_finger.body.local_to_world(gripper.left_finger.shape.b) - object.body.position)
-            r_tip_dist = np.linalg.norm(gripper.right_finger.body.local_to_world(gripper.right_finger.shape.b) - object.body.position)
-
-            if l_tip_dist < 30:
-                r2 = 10
-            else:
-                r2 = 10 - 10 * np.tanh((l_tip_dist - 30) / 100)
-
-            if r_tip_dist < 30:
-                r3 = 1
-            else:
-                r3 = 10 - 10 * np.tanh((r_tip_dist - 30) / 100)
-
-            reward = r2 + r3
-
-            print('Reward:', reward, 'r2', r2, 'r3', r3)
-
 
         # White background
         display.fill((255, 255, 255))

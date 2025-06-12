@@ -1,6 +1,10 @@
 import numpy as np
 import pygame
 import pymunk
+import os
+
+import time
+import psutil
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -9,9 +13,9 @@ from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv, SubprocV
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 
-from grippers import Gripper2
-from objects import Ball, Floor, Poly, Walls
-import objects, grippers
+from pymunk_experiments.grippers import Gripper2
+from pymunk_experiments.objects import Ball, Floor, Poly, Walls
+from pymunk_experiments import objects, grippers
 
 class Environment(gym.Env):
 
@@ -29,7 +33,6 @@ class Environment(gym.Env):
         # Quick HACK for display. Should refactor main
         objects.display = self.surface
         grippers.display = self.surface
-
 
         # Define objects in the environment
         self.gripper = Gripper2(self.space, design_vector)
@@ -91,7 +94,9 @@ class Environment(gym.Env):
 
     def step(self, action):
 
-        pygame.event.pump()
+        if self.current_step % 5 == 0:
+            pygame.event.pump()
+
         dx = dy = 0
         move = 200
         rotation1 = 0.01
@@ -215,15 +220,12 @@ class Environment(gym.Env):
         # Reward if both tips touching below COM. Either r3 or r4, can't have both
         r4 = 10 if (l_tip[1] < self.object.body.position[1] and obs[-4]) and (r_tip[1] < self.object.body.position[1] and obs[-3]) else 0
 
-        # Incremental reward if object is lifted more than 5
-        height_off_floor = self.object.body.position[1] - 100
-
         # Reward based on height of object if under gripper. Diminishes to a max of 100 at the target pickup height
         condition1 = self.object.body.position[1] < self.gripper.base.body.position[1]
         condition2 = self.gripper.left_finger1.body.position[0] < self.object.body.position[0] < self.gripper.right_finger1.body.position[0]
 
+        height_off_floor = self.object.body.position[1] - 100
         norm_height = max(height_off_floor, 0) / (self.pickup_height - 100)
-
 
         r6 = 100 * np.tanh(norm_height) if (condition1 and condition2) else 0
 
@@ -246,7 +248,7 @@ class Environment(gym.Env):
         if self.current_step >= self.max_steps:
             done = True
             # Reward based on success
-            if self.object.body.position.y > self.pickup_height - 100 and condition1 and condition2:
+            if self.object.body.position.y > self.pickup_height - 100 and self.gripper.base.body.position.y > self.pickup_height - 100:
                 success = True
                 print("Success!")
 
@@ -280,6 +282,12 @@ class Environment(gym.Env):
 if __name__ == "__main__":
 
     N_ENVS = 8  # Number of parallel environments
+    T = 2048
+    N_MINIBATCHES = 4  # Number of minibatches per update
+
+    n_steps = T // N_ENVS  # Number of steps per environment per update
+    buffer_size = n_steps * N_ENVS
+    batch_size = buffer_size // N_MINIBATCHES
 
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
     vertex = [(-30, -30), (30, -30), (0, 30)]
@@ -287,12 +295,13 @@ if __name__ == "__main__":
     # Define the policy network architecture
     policy_kwargs = {'net_arch': [256, 256], "log_std_init": 2}
 
-
     def make_env(vertex, rank, render=False):
         """
         Factory that creates a *fresh* environment in its own process.
         `rank` is only used if you want per‑worker seeding or logging.
         """
+
+        print(f"Creating environment {rank}")
 
         def _init():
             env = Environment(vertex, training=True, render_mode="human" if render else None)
@@ -312,12 +321,15 @@ if __name__ == "__main__":
             continue_training = super()._on_step()
 
             if self.best_mean_reward > old_reward:  # new best just saved
+                # Create the directory if it doesn't exist
+                if not os.path.exists("normalise_stats"):
+                    os.makedirs("normalise_stats")
                 self.vecnormalize.save(f"normalise_stats/vecnormalize_stats_best.pkl")
 
             return continue_training
 
     # Training envs (headless, parallel)
-    train_env = SubprocVecEnv([make_env(vertex, i) for i in range(N_ENVS)], start_method="spawn")
+    train_env = DummyVecEnv([make_env(vertex, i) for i in range(N_ENVS)])
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=False)
 
     # Env for saving best model
@@ -330,7 +342,7 @@ if __name__ == "__main__":
         vecnormalize=train_env,
         best_model_save_path=f"models/ppo_pymunk_gripper_best",
         n_eval_episodes=5,
-        eval_freq=25_000,
+        eval_freq=25000,
         deterministic=True,
         render=False,
         verbose=0,
@@ -342,15 +354,16 @@ if __name__ == "__main__":
     eval_env.obs_rms = train_env.obs_rms  # share running stats
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=100000, render=True, verbose=0,
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000000, render=True, verbose=0,
                                  deterministic=True)
+
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
         "MlpPolicy",
         train_env,
-        n_steps=256,  # 256 × 8 = 2048 steps / update
-        batch_size=512,  # must divide N_ENVS × N_STEPS
+        n_steps=n_steps,
+        batch_size=batch_size,
         verbose=0,
         tensorboard_log="./ppo_gripper_tensorboard/",
         policy_kwargs=policy_kwargs,
@@ -358,7 +371,16 @@ if __name__ == "__main__":
         learning_rate=1e-3,
     )
 
-    model.learn(total_timesteps=5000000, callback=[eval_callback, best_ckpt])
+    start_time = time.time()
+
+    model.learn(total_timesteps=1000000, callback=[eval_callback, best_ckpt])
+
+    duration = time.time() - start_time
+
+    cpu_percent = psutil.cpu_percent()
+    memory_percent = psutil.virtual_memory().percent
+    print(f"50k steps took {duration:.1f}s, CPU: {cpu_percent}%, RAM: {memory_percent}%")
+
     print("Training complete and model saved")
 
     train_env.close()

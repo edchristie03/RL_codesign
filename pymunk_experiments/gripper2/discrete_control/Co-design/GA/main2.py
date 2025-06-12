@@ -399,7 +399,7 @@ import os
 from datetime import datetime
 from natsort import natsorted
 
-shape_name, vertex =  "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] # "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] #
+shape_name, vertex = "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] # "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] #
 
 # Evolutionary Algorithm Parameters
 POPULATION_SIZE = 10
@@ -950,7 +950,7 @@ if __name__ == "__main__":
     # Option 3: Just get best model info without running anything
     # Option 4: Analyze and visualize best result from each generation
 
-    OPTION = 4  # Change this to 1, 2, or 3 as needed
+    OPTION = 2  # Change this to 1, 2, or 3 as needed
 
     if OPTION == 1:
         # Run full GA optimization

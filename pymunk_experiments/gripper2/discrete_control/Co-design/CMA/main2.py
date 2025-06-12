@@ -11,7 +11,6 @@ import cma
 
 shape_name, vertex = "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] # "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] #
 
-
 # CMA-ES Parameters
 LAMBDA = 10  # Population size (offspring per generation)
 SIGMA0 = 20  # Initial standard deviation
@@ -521,7 +520,7 @@ if __name__ == "__main__":
     # Option 2: Load and test best model after optimization
     # Option 3: Just get best model info without running anything
 
-    OPTION = 2  # Change this to 1, 2, or 3 as needed
+    OPTION = 1  # Change this to 1, 2, or 3 as needed
 
     if OPTION == 1:
         # Run full CMA-ES optimization

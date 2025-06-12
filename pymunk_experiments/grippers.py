@@ -103,7 +103,7 @@ class Base():
         pygame.draw.line(display, (255, 0, 0), (x1, y1), (x2, y2), int(self.shape.radius * 2))
 
 class Finger1():
-    def __init__(self, space, anchor, base, length, side='left'):
+    def __init__(self, space, anchor, base, length=120, side='left'):
         self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)
         self.body.position = anchor
         self.shape = pymunk.Segment(self.body, (0, 0), (0, -length), 5)

@@ -16,7 +16,6 @@ shape_vertices = {
 
 avg_returns = []
 successes = []
-labels = []
 
 for shape_name, vertex in shape_vertices.items():
 
@@ -29,7 +28,7 @@ for shape_name, vertex in shape_vertices.items():
     test_env.training = False        # freeze stats, use them consistently
 
     # Run N test episodes
-    N = 10
+    N = 3
     returns = []
     shape_successes = 0
     for ep in range(1, N + 1):
@@ -51,7 +50,9 @@ for shape_name, vertex in shape_vertices.items():
     avg_returns.append(np.mean(returns))
     successes.append(shape_successes)
     test_env.close()
-    labels.append(shape_name)
+
+labels = ["Circle", "Square", "RA triangle", "Equi Triangle"] #, "Half Trapezoid", "Tall Rectangle", "Wide Rectangle"]
+
 
 # Now plot average returns
 plt.figure(figsize=(6,4))
@@ -59,7 +60,7 @@ plt.plot(range(len(shape_vertices)), avg_returns, marker='o', linewidth=2)
 plt.xticks(range(len(shape_vertices)), labels, rotation=45)
 plt.xlabel("Vertex Configuration")
 plt.ylabel("Average Return")
-plt.title("Gripper 1: Average Return per Vertex Configuration")
+plt.title("Gripper 2: Average Return per Vertex Configuration")
 plt.grid(True)
 plt.tight_layout()
 plt.show()
@@ -72,7 +73,7 @@ plt.bar(range(len(shape_vertices)), successes)
 plt.xticks(range(len(shape_vertices)), labels, rotation=45)
 plt.xlabel("Vertex Configuration")
 plt.ylabel("Successes")
-plt.title("Gripper 1: Successes per Vertex Configuration")
+plt.title("Gripper 2: Successes per Vertex Configuration")
 plt.grid(True)
 plt.tight_layout()
 plt.show()
