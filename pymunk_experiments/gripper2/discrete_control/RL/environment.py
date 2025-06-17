@@ -369,7 +369,7 @@ class Environment(gym.Env):
 
 if __name__ == "__main__":
 
-    N_ENVS = 8  # Number of parallel environments
+    N_ENVS = 30  # Number of parallel environments
 
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
     vertex = [(-30, -30), (30, -30), (0, 30)]
@@ -447,7 +447,7 @@ if __name__ == "__main__":
         learning_rate=1e-3,
     )
 
-    model.learn(total_timesteps=1000, callback=[eval_callback, best_ckpt])
+    model.learn(total_timesteps=1000000, callback=[eval_callback, best_ckpt])
 
     print("Training complete and model saved")
 
