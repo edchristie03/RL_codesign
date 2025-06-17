@@ -401,7 +401,7 @@ if __name__ == "__main__":
             continue_training = super()._on_step()
 
             if self.best_mean_reward > old_reward:  # new best just saved
-                self.vecnormalize.save(f"normalise_stats/vecnormalize_stats_best.pkl")
+                self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/RL/normalise_stats/vecnormalize_stats_best.pkl")
 
             return continue_training
 
@@ -417,7 +417,7 @@ if __name__ == "__main__":
     best_ckpt = SaveBestWithStats(
         eval_env_fast,
         vecnormalize=train_env,
-        best_model_save_path=f"models/ppo_pymunk_gripper_best",
+        best_model_save_path=f"pymunk_experiments/gripper2/discrete_control/RL/models/ppo_pymunk_gripper_best",
         n_eval_episodes=5,
         eval_freq=10_000,
         deterministic=True,
@@ -441,13 +441,13 @@ if __name__ == "__main__":
         n_steps=256,  # 256 × 8 = 2048 steps / update
         batch_size=512,  # must divide N_ENVS × N_STEPS
         verbose=0,
-        tensorboard_log="./ppo_gripper_tensorboard/",
+        tensorboard_log="pymunk_experiments/gripper2/discrete_control/RL/ppo_gripper_tensorboard/",
         policy_kwargs=policy_kwargs,
         ent_coef=0.05,
         learning_rate=1e-3,
     )
 
-    model.learn(total_timesteps=5000000, callback=[eval_callback, best_ckpt])
+    model.learn(total_timesteps=1000000, callback=[eval_callback, best_ckpt])
     # model.save(f"models/ppo_pymunk_gripper_new{idx}")
     # train_env.save(f"normalise_stats/vecnormalize_stats_best.pkl")
     print("Training complete and model saved")
@@ -457,4 +457,5 @@ if __name__ == "__main__":
 
 
 # tensorboard --logdir ./ppo_gripper_tensorboard/
+#  python -m pymunk_experiments.gripper2.discrete_control.RL.environment
 

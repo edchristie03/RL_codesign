@@ -1,6 +1,8 @@
 import numpy as np
 import pygame
 import pymunk
+import os
+from pathlib import Path
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -12,6 +14,16 @@ from stable_baselines3.common.monitor import Monitor
 from pymunk_experiments.grippers import Gripper
 from pymunk_experiments.objects import Ball, Floor, Poly, Walls
 from pymunk_experiments import objects, grippers
+
+def get_project_relative_path(relative_path):
+    """Get absolute path relative to project root."""
+    # Find project root by looking for README.md
+    current_path = Path(__file__).resolve()
+    for parent in current_path.parents:
+        if (parent / "README.md").exists():
+            return str(parent / relative_path)
+    # Fallback to current directory if README.md not found
+    return str(Path.cwd() / relative_path)
 
 class Environment(gym.Env):
 
@@ -301,7 +313,7 @@ if __name__ == "__main__":
     eval_env.obs_rms = train_env.obs_rms  # share running stats
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=15000, render=True, verbose=0, deterministic=False)
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000, render=True, verbose=0, deterministic=False)
 
 
     class RawAndNormalizedRewardLogger(BaseCallback):
@@ -333,7 +345,7 @@ if __name__ == "__main__":
         n_steps=512,  # 256 × 8 = 2048 steps / update
         batch_size=512,  # must divide N_ENVS × N_STEPS
         verbose=0,
-        tensorboard_log="./ppo_gripper_tensorboard/",
+        tensorboard_log=get_project_relative_path("ppo_gripper_tensorboard/"),
         policy_kwargs=policy_kwargs,
         ent_coef=0.01,
         learning_rate=3e-4
@@ -341,8 +353,8 @@ if __name__ == "__main__":
 
 
     model.learn(total_timesteps=5000000, callback=[eval_callback, RawAndNormalizedRewardLogger()])
-    model.save("models/ppo_pymunk_gripper")
-    train_env.save("normalise_stats/vecnormalize_stats.pkl")
+    model.save(get_project_relative_path("models/ppo_pymunk_gripper"))
+    train_env.save(get_project_relative_path("normalise_stats/vecnormalize_stats.pkl"))
     print("Training complete and model saved.")
 
     train_env.close()

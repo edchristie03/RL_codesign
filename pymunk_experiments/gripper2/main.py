@@ -3,9 +3,9 @@ import pymunk
 import numpy as np
 
 
-from objects import Ball, Poly, Floor, Walls
-from grippers import Gripper2
-import objects, grippers
+from ..objects import Ball, Poly, Floor, Walls
+from ..grippers import Gripper2
+from .. import objects, grippers
 
 def game(space, object):
 
@@ -68,9 +68,21 @@ def game(space, object):
 
 if __name__ == "__main__":
 
+    shapes = {
+        "circle": [],
+        "square": [(-30, -30), (30, -30), (30, 30), (-30, 30)],
+        "right_triangle": [(-30, -30), (30, -30), (30, 30)],
+        "equilateral_triangle": [(-30, -30), (30, -30), (0, 30)],
+        "thin_rod": [(-40, -3), (40, -3), (40, 3), (-40, 3)],
+        "L_shape": [(-30, -30), (10, -30), (10, -10), (30, -10), (30, 30), (-30, 30)],
+        "diamond": [(0, -40), (25, 0), (0, 40), (-25, 0)],  # tall narrow diamond
+        "wide_rectangle": [(-200, -10), (200, -10), (200, 10), (-200, 10)],  # very wide, short
+        "pentagon": [(0, -30), (28, -9), (17, 25), (-17, 25), (-28, -9)]  # irregular pentagon
+    }
+
     vertices = [[], [(-30, -30), (30, -30), (30, 30), (-30, 30)] ,[(-30, -30), (30, -30), (30, 30)], [(-30, -30), (30, -30), (0, 30)]]
 
-    for vertex in vertices:
+    for name, vertex in shapes.items():
 
         pygame.init()
         display = pygame.display.set_mode((800, 800))
