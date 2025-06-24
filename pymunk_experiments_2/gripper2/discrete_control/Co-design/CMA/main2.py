@@ -1,4 +1,4 @@
-from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnNoModelImprovement
+from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv, SubprocVecEnv
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
@@ -8,101 +8,92 @@ import pickle
 import os
 from datetime import datetime
 import cma
-from natsort import natsorted
 
-shape_name, vertex = "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] # "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] #
+shape_name, vertex = 'Circle', [] # "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] # "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] #
 
 # CMA-ES Parameters
-LAMBDA = 15  # Population size (offspring per generation)
-SIGMA0 = np.array([40, 40, 40, 40, 40])  # Initial standard deviation
+LAMBDA = 10  # Population size (offspring per generation)
+SIGMA0 = 10  # Initial standard deviation
 MAX_GENERATIONS = 10  # Maximum number of complete generations
 # MAX_EVALUATIONS will be calculated as LAMBDA * MAX_GENERATIONS
 
-# Design vector bounds
+# Design vector bound
+
 BOUNDS = np.array([
-    [50, 400],  # base_width
-    [30, 300],  # left_finger_1
-    [30, 300],  # right_finger_1
-    [30, 300],  # left_finger_2
-    [30, 300]  # right_finger_2
+    [50, 150],  # length
+    [1e6, 1e12],  # stiffness
 ])
 
 # Initial mean (center of search space)
 INITIAL_MEAN = np.mean(BOUNDS, axis=1)
 
-def make_env(vertex, rank, design_vector, render=False):
-    """Factory that creates a fresh environment in its own process."""
-
-    def _init():
-        env = Environment(vertex, training=True, render_mode="human" if render else None,
-                          design_vector=design_vector)
-        env = Monitor(env)  # keeps episode stats
-        return env
-
-    return _init
-
-class SaveBestWithStats(EvalCallback):
-    def __init__(self, *args, vecnormalize, id, generation, experiment_id, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.vecnormalize = vecnormalize  # the training wrapper
-        self.experiment_id = experiment_id  # store experiment ID for saving
-        self.generation = generation  # store generation for saving
-        self.id = id  # store model ID for saving
-
-    def _on_step(self) -> bool:
-        # run the usual evaluation logic
-        old_reward = self.best_mean_reward
-        continue_training = super()._on_step()
-
-        if self.best_mean_reward > old_reward:
-            stats_dir = f"Experiments/{self.experiment_id}/normalise_stats"
-            os.makedirs(stats_dir, exist_ok=True)
-            self.vecnormalize.save(f"{stats_dir}/vecnormalize_stats_{shape_name}_Gen{self.generation}_ID_{self.id}.pkl")
-
-        return continue_training
-
-def train_from_scratch(id, design_vector, generation, experiment_id):
+def train(id, design_vector, generation, experiment_id):
     """Train a PPO model for a given design vector"""
     N_ENVS = 8  # Number of parallel environments
 
     # Define the policy network architecture
     policy_kwargs = {'net_arch': [256, 256], "log_std_init": 2}
 
+    def make_env(vertex, rank, design_vector, render=False):
+        """Factory that creates a fresh environment in its own process."""
+
+        def _init():
+            env = Environment(vertex, training=True, render_mode="human" if render else None,
+                              design_vector=design_vector)
+            env = Monitor(env)  # keeps episode stats
+            return env
+
+        return _init
+
+    class SaveBestWithStats(EvalCallback):
+        def __init__(self, *args, vecnormalize, experiment_id, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.vecnormalize = vecnormalize  # the training wrapper
+            self.experiment_id = experiment_id  # store experiment ID for saving
+
+        def _on_step(self) -> bool:
+            # run the usual evaluation logic
+            old_reward = self.best_mean_reward
+            continue_training = super()._on_step()
+
+            if self.best_mean_reward > old_reward:
+                stats_dir = f"Experiments/{self.experiment_id}/normalise_stats"
+                os.makedirs(stats_dir, exist_ok=True)
+                self.vecnormalize.save(f"{stats_dir}/vecnormalize_stats_{shape_name}_Gen{generation}_ID_{id}.pkl")
+
+            return continue_training
+
     # Training envs (headless, parallel)
     train_env = SubprocVecEnv([make_env(vertex, i, design_vector) for i in range(N_ENVS)], start_method="spawn")
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=False)
 
     # Env for saving best model
-    eval_env = DummyVecEnv([make_env(vertex, 0, design_vector, render=True)])
-    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, training=False)
-    # Copy the observation normalization stats from the training env to the eval env
-    eval_env.obs_rms = train_env.obs_rms
-
-    # Stop training if no model improvement after 10 evaluations
-    stop_callback = StopTrainingOnNoModelImprovement(
-        max_no_improvement_evals=19,
-        min_evals=1,
-        verbose=1)
+    eval_env_fast = DummyVecEnv([make_env(vertex, 0, design_vector, render=False)])
+    eval_env_fast = VecNormalize(eval_env_fast, norm_obs=True, norm_reward=False, training=False)
+    eval_env_fast.obs_rms = train_env.obs_rms
 
     models_dir = f"Experiments/{experiment_id}/models/{shape_name}_Gen{generation}_ID_{id}"
     os.makedirs(models_dir, exist_ok=True)
     best_ckpt = SaveBestWithStats(
-        eval_env,
+        eval_env_fast,
         vecnormalize=train_env,
-        id=id,
-        generation=generation,
         experiment_id=experiment_id,
         best_model_save_path=models_dir,
         n_eval_episodes=10,
-        eval_freq=12500, # 8 * 12500 = 100000 steps
+        eval_freq=25000,
         deterministic=True,
         render=False,
         verbose=0,
-        callback_after_eval=stop_callback
     )
 
+    # Evaluation env (still a single window so you can watch)
+    eval_env = DummyVecEnv([make_env(vertex, 0, design_vector, render=True)])  # Set to False for faster training
+    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, training=False)
+    eval_env.obs_rms = train_env.obs_rms  # share running stats
+
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000000, render=False, verbose=0, deterministic=True)
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000000, render=True, verbose=0,
+                                 deterministic=True)
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
@@ -117,106 +108,11 @@ def train_from_scratch(id, design_vector, generation, experiment_id):
         learning_rate=1e-3,
     )
 
-    model.learn(total_timesteps=3000000, callback=[eval_callback, best_ckpt])
+    model.learn(total_timesteps=200000, callback=[eval_callback, best_ckpt])
     print(f"Training complete and model saved for Gen{generation}_ID{id}")
 
     train_env.close()
     eval_env.close()
-
-def warm_start_train(id, design_vector, generation, experiment_id):
-
-    N_ENVS = 8
-
-    sim_id, sim_gen = get_most_similar(design_vector, experiment_id)
-
-    stats_dir = f"Experiments/{experiment_id}/normalise_stats/vecnormalize_stats_{shape_name}_Gen{sim_gen}_ID_{sim_id}.pkl"
-
-    # Training envs (headless, parallel)
-    train_env = SubprocVecEnv([make_env(vertex, i, design_vector) for i in range(N_ENVS)], start_method="spawn")
-    train_env = VecNormalize.load(f"{stats_dir}", train_env)
-    train_env.training = True
-
-    model = PPO.load(f"Experiments/{experiment_id}/models/{shape_name}_Gen{sim_gen}_ID_{sim_id}/best_model", env=train_env, tensorboard_log=f"Experiments/{experiment_id}/ppo_gripper_tensorboard/")
-
-    model.learning_rate = 1e-4
-
-    # Env for saving best model
-    eval_env = DummyVecEnv([make_env(vertex, 0, design_vector, render=True)])
-    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, training=False)
-    # Copy the observation normalization stats from the training env to the eval env
-    eval_env.obs_rms = train_env.obs_rms
-
-    # Stop training if no model improvement after 10 evaluations
-    stop_callback = StopTrainingOnNoModelImprovement(
-        max_no_improvement_evals=9,
-        min_evals=1,
-        verbose=1)
-
-    models_dir = f"Experiments/{experiment_id}/models/{shape_name}_Gen{generation}_ID_{id}"
-    os.makedirs(models_dir, exist_ok=True)
-    best_ckpt = SaveBestWithStats(
-        eval_env,
-        vecnormalize=train_env,
-        id=id,
-        generation=generation,
-        experiment_id=experiment_id,
-        best_model_save_path=models_dir,
-        n_eval_episodes=10,
-        eval_freq=12500,  # 8 * 12500 = 100000 steps
-        deterministic=True,
-        render=False,
-        verbose=0,
-        callback_after_eval=stop_callback
-    )
-
-    # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000000, render=False, verbose=0,
-                                 deterministic=True)
-
-    model.learn(total_timesteps=3000000, callback=[eval_callback, best_ckpt])
-    print(f"Training complete and model saved for Gen{generation}_ID{id}")
-
-    train_env.close()
-    eval_env.close()
-
-def get_most_similar(design_vector, experiment_id):
-    # Load generation data for similarity analysis
-    generation_files = [f for f in os.listdir(f"Experiments/{experiment_id}/evolution_data") if
-                        f.startswith("generation_") and f.endswith(".pkl")]
-
-    generation_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
-
-    best_similarity = float('inf')  # We'll use Euclidean distance (lower is better)
-    most_similar_id = None
-    most_similar_gen = None
-    most_similar_design = None
-
-    for gen_file in generation_files:
-        with open(f"Experiments/{experiment_id}/evolution_data/{gen_file}", 'rb') as f:
-            gen_data = pickle.load(f)
-
-        gen_num = gen_data['generation']
-
-        # Compare current design_vector with all individuals in this generation
-        population = np.array(gen_data['population'])
-
-        for i, individual in enumerate(population):
-            # Calculate Euclidean distance between design_vector and this individual
-            distance = np.linalg.norm(design_vector - individual)
-
-            if distance < best_similarity:
-                best_similarity = distance
-                most_similar_id = i + 1  # IDs are 1-indexed
-                most_similar_gen = gen_num
-                most_similar_design = individual
-
-    print(f"\nMost similar design found:")
-    print(f"  Generation: {most_similar_gen}")
-    print(f"  ID: {most_similar_id}")
-    print(f"  Distance: {best_similarity:.2f}")
-    print(f"  Design: {np.round(most_similar_design).astype(int)}")
-
-    return most_similar_id, most_similar_gen
 
 def evaluate_model(id, design_vector, generation, experiment_id):
     """Evaluate a trained model and return fitness score"""
@@ -231,7 +127,7 @@ def evaluate_model(id, design_vector, generation, experiment_id):
     test_env.training = False  # freeze stats, use them consistently
 
     # Run N test episodes
-    N = 10  # Multiple episodes for more robust evaluation
+    N = 5  # Multiple episodes for more robust evaluation
     returns = []
     success_count = 0
 
@@ -256,7 +152,7 @@ def evaluate_model(id, design_vector, generation, experiment_id):
     success_rate = success_count / N
 
     # Fitness function: combine average return and success rate
-    fitness = avg_return  * success_rate
+    fitness = avg_return  # + (success_rate * 100)  # Bonus for successful episodes
 
     test_env.close()
     return fitness, success_rate
@@ -274,19 +170,16 @@ def objective_function(design_vector, generation, id, experiment_id):
     clipped_design = clip_to_bounds(design_vector, BOUNDS)
     rounded_design = tuple(round(x, 0) for x in clipped_design)
 
-    print(f"Evaluating Gen{generation}_ID{id} with design: {np.round(rounded_design).astype(int)}")
+    print(f"Evaluating Gen{generation}_ID{id} with design: {rounded_design}")
 
     # Train the model
-    if generation == 1:
-        train_from_scratch(id, rounded_design, generation, experiment_id)
-    else:
-        warm_start_train(id, rounded_design, generation, experiment_id)
+    train(id, rounded_design, generation, experiment_id)
 
     # Evaluate the model
     fitness, success_rate = evaluate_model(id, rounded_design, generation, experiment_id)
 
-    print(f"Gen{generation}_ID{id} - Fitness: {fitness:.2f} - Success Rate: {success_rate:.2f}")
-
+    print(f"Gen{generation}_ID{id} - Fitness: {fitness:.2f}")
+    print(f"Gen{generation}_ID{id} - Success Rate: {success_rate:.2f}")
 
     # Return negative fitness (CMA-ES minimizes)
     return -fitness
@@ -310,23 +203,6 @@ def save_generation_data(generation, population, fitness_values, best_individual
     with open(f"Experiments/{experiment_id}/evolution_data/generation_{generation}.pkl", 'wb') as f:
         pickle.dump(data, f)
 
-def get_per_dimension_sigma(es):
-    """Extract per-dimension step sizes from CMA-ES"""
-    # Get the square root of diagonal elements of the covariance matrix
-    # This gives you the effective standard deviation in each dimension
-    C = es.C  # Covariance matrix
-    sigma_per_dim = es.sigma * np.sqrt(np.diag(C))
-
-    print(f"Per-dimension sigma:")
-    print(f"  base_width: {sigma_per_dim[0]:.3f}")
-    print(f"  lf1_length: {sigma_per_dim[1]:.3f}")
-    print(f"  rf1_length: {sigma_per_dim[2]:.3f}")
-    print(f"  lf2_length: {sigma_per_dim[3]:.3f}")
-    print(f"  rf2_length: {sigma_per_dim[4]:.3f}")
-
-
-    return sigma_per_dim
-
 def cmaes_optimization(experiment_id):
 
     """Main CMA-ES optimization loop"""
@@ -342,13 +218,12 @@ def cmaes_optimization(experiment_id):
     print(f"Bounds: {BOUNDS}")
 
     # Initialize CMA-ES
-    es = cma.CMAEvolutionStrategy(INITIAL_MEAN, 1, {
+    es = cma.CMAEvolutionStrategy(INITIAL_MEAN, SIGMA0, {
         'popsize': LAMBDA,
         'bounds': [BOUNDS[:, 0].tolist(), BOUNDS[:, 1].tolist()],
         'maxfevals': total_evaluations,  # Set this high enough to not interfere
         'seed': 42,
-        'verbose': 1,
-        'CMA_stds': SIGMA0.tolist()
+        'verbose': 1
     })
 
     # Track best individual across all generations
@@ -364,19 +239,13 @@ def cmaes_optimization(experiment_id):
     while generation < MAX_GENERATIONS and not es.stop():
         generation += 1
         print(f"\n=== GENERATION {generation}/{MAX_GENERATIONS} ===")
-        print(f"Current global sigma: {es.sigma:.3f}")
-        sigma_per_dim = get_per_dimension_sigma(es)
+        print(f"Current sigma: {es.sigma:.3f}")
         print(f"Current mean: {es.mean}")
 
         # Ask for new candidate solutions
         solutions = es.ask()
 
-        solutions = [np.round(arr).astype(int) for arr in solutions]
-        solutions = [clip_to_bounds(sol, BOUNDS) for sol in solutions]  # Clip to bounds
-
-        print(f"Generation {generation} solutions:")
-        for sol in solutions:
-            print(sol)
+        print("Generated solutions:", [tuple(round(x, 0) for x in sol) for sol in solutions])
 
         # Evaluate ALL solutions in this generation
         fitness_values = []
@@ -387,7 +256,7 @@ def cmaes_optimization(experiment_id):
             print(f"  Individual {i + 1}/{len(solutions)}")
 
             # Evaluate this solution
-            fitness = objective_function(solution, generation, i+1, experiment_id)
+            fitness = objective_function(solution, generation, i, experiment_id)
             fitness_values.append(fitness)
 
             # Update global best (remember fitness is negative in CMA-ES)
@@ -396,7 +265,7 @@ def cmaes_optimization(experiment_id):
                 global_best_fitness = actual_fitness
                 global_best_individual = clip_to_bounds(solution, BOUNDS)
                 global_best_generation = generation
-                global_best_id = i+1
+                global_best_id = i
                 print(f"    *** NEW GLOBAL BEST: {actual_fitness:.2f} ***")
 
             total_evaluation_count += 1
@@ -493,7 +362,7 @@ def test_best_design(design_vector, generation, id, experiment_id):
     test_env.training = False
 
     # Run test episodes
-    N = 1
+    N = 3
     for ep in range(1, N + 1):
         obs = test_env.reset()
         done = False
@@ -652,7 +521,7 @@ if __name__ == "__main__":
     # Option 2: Load and test best model after optimization
     # Option 3: Just get best model info without running anything
 
-    OPTION = 4  # Change this to 1, 2, or 3 as needed
+    OPTION = 1  # Change this to 1, 2, or 3 as needed
 
     if OPTION == 1:
         # Run full CMA-ES optimization
@@ -676,34 +545,6 @@ if __name__ == "__main__":
             print()
 
         analyze_cmaes_results(experiment_id)
-
-    elif OPTION == 4:
-        # Option 4: Analyze and visualize best result from each generation
-
-        experiment_id = get_next_experiment_id() - 1
-
-        files = os.listdir(f"Experiments/{experiment_id}/evolution_data")
-        files_sorted = natsorted(files)
-
-        for f in files_sorted:
-            if f.startswith("generation_") and f.endswith(".pkl"):
-
-                with open(f"Experiments/{experiment_id}/evolution_data/{f}", 'rb') as file:
-                    data = pickle.load(file)
-
-                best_fitness = data['best_fitness']
-                best_individual = tuple(data['best_individual'])
-                generation = data['generation']
-                best_id = data['best_id']
-
-                print("\n" + "=" * 50)
-                print(f"=== Best model from Generation {generation} ===")
-                print(f"Best fitness: {best_fitness:.2f}")
-                print(f"Best design: {best_individual}")
-                print(f"Model ID: {best_id}")
-
-                # Test the best design
-                test_best_design(best_individual, generation, best_id, experiment_id)
 
 
 

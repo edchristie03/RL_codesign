@@ -4,7 +4,7 @@ import pymunk
 
 import gymnasium as gym
 from gymnasium import spaces
-from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
+from stable_baselines3.common.callbacks import EvalCallback, BaseCallback, StopTrainingOnNoModelImprovement
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv, SubprocVecEnv
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
@@ -367,9 +367,37 @@ class Environment(gym.Env):
     def close(self):
         pygame.quit()
 
+def make_env(vertex, rank, render=False):
+    """
+    Factory that creates a *fresh* environment in its own process.
+    `rank` is only used if you want per‑worker seeding or logging.
+    """
+
+    def _init():
+        env = Environment(vertex, training=True, render_mode="human" if render else None)
+        env = Monitor(env)  # keeps episode stats
+        return env
+
+    return _init
+
+class SaveBestWithStats(EvalCallback):
+    def __init__(self, *args, vecnormalize, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.vecnormalize = vecnormalize  # the training wrapper
+
+    def _on_step(self) -> bool:
+        # run the usual evaluation logic
+        old_reward = self.best_mean_reward
+        continue_training = super()._on_step()
+
+        if self.best_mean_reward > old_reward:  # new best just saved
+            self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/RL/normalise_stats/vecnormalize_stats_best.pkl")
+
+        return continue_training
+
 if __name__ == "__main__":
 
-    N_ENVS = 30  # Number of parallel environments
+    N_ENVS = 8  # Number of parallel environments
 
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
     vertex = [(-30, -30), (30, -30), (0, 30)]
@@ -377,45 +405,25 @@ if __name__ == "__main__":
     # Define the policy network architecture
     policy_kwargs = {'net_arch': [256, 256], "log_std_init": 2}
 
-    def make_env(vertex, rank, render=False):
-        """
-        Factory that creates a *fresh* environment in its own process.
-        `rank` is only used if you want per‑worker seeding or logging.
-        """
-
-        def _init():
-            env = Environment(vertex, training=True, render_mode="human" if render else None)
-            env = Monitor(env)  # keeps episode stats
-            return env
-
-        return _init
-
-    class SaveBestWithStats(EvalCallback):
-        def __init__(self, *args, vecnormalize, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.vecnormalize = vecnormalize  # the training wrapper
-
-        def _on_step(self) -> bool:
-            # run the usual evaluation logic
-            old_reward = self.best_mean_reward
-            continue_training = super()._on_step()
-
-            if self.best_mean_reward > old_reward:  # new best just saved
-                self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/RL/normalise_stats/vecnormalize_stats_best.pkl")
-
-            return continue_training
-
     # Training envs (headless, parallel)
     train_env = SubprocVecEnv([make_env(vertex, i) for i in range(N_ENVS)], start_method="spawn")
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=False)
 
     # Env for saving best model
-    eval_env_fast = DummyVecEnv([make_env(vertex, 0, render=False)])
-    eval_env_fast = VecNormalize(eval_env_fast, norm_obs=True, norm_reward=False, training=False)
-    eval_env_fast.obs_rms = train_env.obs_rms
+    eval_env = DummyVecEnv([make_env(vertex, 0, render=True)])
+    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, training=False)
+    # Copy the observation normalization stats from the training env to the eval env
+    eval_env.obs_rms = train_env.obs_rms
+
+    # Stop training if no model improvement after 10 evaluations
+    stop_callback = StopTrainingOnNoModelImprovement(
+        max_no_improvement_evals=10,
+        min_evals=1,
+        verbose=1
+    )
 
     best_ckpt = SaveBestWithStats(
-        eval_env_fast,
+        eval_env,
         vecnormalize=train_env,
         best_model_save_path=f"pymunk_experiments/gripper2/discrete_control/RL/models/ppo_pymunk_gripper_best",
         n_eval_episodes=5,
@@ -423,16 +431,12 @@ if __name__ == "__main__":
         deterministic=True,
         render=False,
         verbose=0,
+        callback_after_eval=stop_callback
     )
 
-    # Evaluation env (still a single window so you can watch)
-    eval_env = DummyVecEnv([make_env(vertex, 0, render=True)])
-    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, training=False)
-    eval_env.obs_rms = train_env.obs_rms  # share running stats
 
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=1000000, render=True, verbose=0,
-                                 deterministic=True)
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000000, render=True, verbose=0, deterministic=True)
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
@@ -447,7 +451,7 @@ if __name__ == "__main__":
         learning_rate=1e-3,
     )
 
-    model.learn(total_timesteps=1000000, callback=[eval_callback, best_ckpt])
+    model.learn(total_timesteps=10000000, callback=[eval_callback, best_ckpt])
 
     print("Training complete and model saved")
 

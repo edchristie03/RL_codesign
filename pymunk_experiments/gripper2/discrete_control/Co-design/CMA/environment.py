@@ -250,7 +250,7 @@ class Environment(gym.Env):
             # Reward based on success
             if self.object.body.position.y > self.pickup_height - 100 and self.gripper.base.body.position.y > self.pickup_height - 100:
                 success = True
-                print("Success!")
+                # print("Success!")
 
         return reward, done, success
 
