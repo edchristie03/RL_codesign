@@ -248,7 +248,7 @@ class Environment(gym.Env):
         if self.current_step >= self.max_steps:
             done = True
             # Reward based on success
-            if self.object.body.position.y > self.pickup_height - 100 and self.gripper.base.body.position.y > self.pickup_height - 100:
+            if self.object.body.position.y > self.pickup_height - 100 and (condition1 and condition2):
                 success = True
                 # print("Success!")
 

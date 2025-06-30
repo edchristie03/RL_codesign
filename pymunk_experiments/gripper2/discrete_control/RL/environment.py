@@ -397,7 +397,7 @@ class SaveBestWithStats(EvalCallback):
 
 if __name__ == "__main__":
 
-    N_ENVS = 8  # Number of parallel environments
+    N_ENVS = 1  # Number of parallel environments
 
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
     vertex = [(-30, -30), (30, -30), (0, 30)]
@@ -433,7 +433,6 @@ if __name__ == "__main__":
         verbose=0,
         callback_after_eval=stop_callback
     )
-
 
     # Make callback to run 1 episode every eval_freq steps
     eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000000, render=True, verbose=0, deterministic=True)

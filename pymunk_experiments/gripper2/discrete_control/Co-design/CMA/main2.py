@@ -10,10 +10,10 @@ from datetime import datetime
 import cma
 from natsort import natsorted
 
-shape_name, vertex = "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] # "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] #
+shape_name, vertex =  "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] # "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] #
 
 # CMA-ES Parameters
-LAMBDA = 15  # Population size (offspring per generation)
+LAMBDA = 20  # Population size (offspring per generation)
 SIGMA0 = np.array([40, 40, 40, 40, 40])  # Initial standard deviation
 MAX_GENERATIONS = 10  # Maximum number of complete generations
 # MAX_EVALUATIONS will be calculated as LAMBDA * MAX_GENERATIONS
@@ -21,10 +21,10 @@ MAX_GENERATIONS = 10  # Maximum number of complete generations
 # Design vector bounds
 BOUNDS = np.array([
     [50, 400],  # base_width
-    [30, 300],  # left_finger_1
-    [30, 300],  # right_finger_1
-    [30, 300],  # left_finger_2
-    [30, 300]  # right_finger_2
+    [30, 200],  # left_finger_1
+    [30, 200],  # right_finger_1
+    [30, 200],  # left_finger_2
+    [30, 200]  # right_finger_2
 ])
 
 # Initial mean (center of search space)
@@ -80,7 +80,7 @@ def train_from_scratch(id, design_vector, generation, experiment_id):
 
     # Stop training if no model improvement after 10 evaluations
     stop_callback = StopTrainingOnNoModelImprovement(
-        max_no_improvement_evals=19,
+        max_no_improvement_evals=100,
         min_evals=1,
         verbose=1)
 
@@ -93,8 +93,8 @@ def train_from_scratch(id, design_vector, generation, experiment_id):
         generation=generation,
         experiment_id=experiment_id,
         best_model_save_path=models_dir,
-        n_eval_episodes=10,
-        eval_freq=12500, # 8 * 12500 = 100000 steps
+        n_eval_episodes=5,
+        eval_freq=6250, # 8 * 6250 = 50,000 steps
         deterministic=True,
         render=False,
         verbose=0,
@@ -117,7 +117,7 @@ def train_from_scratch(id, design_vector, generation, experiment_id):
         learning_rate=1e-3,
     )
 
-    model.learn(total_timesteps=3000000, callback=[eval_callback, best_ckpt])
+    model.learn(total_timesteps=5000000, callback=[eval_callback, best_ckpt])
     print(f"Training complete and model saved for Gen{generation}_ID{id}")
 
     train_env.close()
@@ -138,7 +138,7 @@ def warm_start_train(id, design_vector, generation, experiment_id):
 
     model = PPO.load(f"Experiments/{experiment_id}/models/{shape_name}_Gen{sim_gen}_ID_{sim_id}/best_model", env=train_env, tensorboard_log=f"Experiments/{experiment_id}/ppo_gripper_tensorboard/")
 
-    model.learning_rate = 1e-4
+    model.learning_rate = 1e-3
 
     # Env for saving best model
     eval_env = DummyVecEnv([make_env(vertex, 0, design_vector, render=True)])
@@ -148,7 +148,7 @@ def warm_start_train(id, design_vector, generation, experiment_id):
 
     # Stop training if no model improvement after 10 evaluations
     stop_callback = StopTrainingOnNoModelImprovement(
-        max_no_improvement_evals=9,
+        max_no_improvement_evals=100,
         min_evals=1,
         verbose=1)
 
@@ -161,8 +161,8 @@ def warm_start_train(id, design_vector, generation, experiment_id):
         generation=generation,
         experiment_id=experiment_id,
         best_model_save_path=models_dir,
-        n_eval_episodes=10,
-        eval_freq=12500,  # 8 * 12500 = 100000 steps
+        n_eval_episodes=5,
+        eval_freq=6250,  # 8 * 12500 = 100000 steps
         deterministic=True,
         render=False,
         verbose=0,
@@ -173,7 +173,7 @@ def warm_start_train(id, design_vector, generation, experiment_id):
     eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000000, render=False, verbose=0,
                                  deterministic=True)
 
-    model.learn(total_timesteps=3000000, callback=[eval_callback, best_ckpt])
+    model.learn(total_timesteps=5000000, callback=[eval_callback, best_ckpt])
     print(f"Training complete and model saved for Gen{generation}_ID{id}")
 
     train_env.close()
@@ -256,34 +256,46 @@ def evaluate_model(id, design_vector, generation, experiment_id):
     success_rate = success_count / N
 
     # Fitness function: combine average return and success rate
-    fitness = avg_return  * success_rate
+    fitness = avg_return * (0.1 + success_rate)
 
     test_env.close()
     return fitness, success_rate
 
 def clip_to_bounds(x, bounds):
-    """Clip solution to bounds"""
-    return np.clip(x, bounds[:, 0], bounds[:, 1])
+    """Clip solution to bounds and enforce asymmetry constraint"""
+    # First clip to bounds
+    clipped = np.clip(x, bounds[:, 0], bounds[:, 1])
+
+    # Extract finger lengths
+    lf1, rf1, lf2, rf2 = clipped[1], clipped[2], clipped[3], clipped[4]
+
+    # Enforce asymmetry: left_total >= right_total
+    left_total = lf1 + lf2
+    right_total = rf1 + rf2
+
+    if left_total < right_total:
+        # Swap left and right sides entirely
+        clipped[1], clipped[2] = clipped[2], clipped[1]  # swap lf1 <-> rf1
+        clipped[3], clipped[4] = clipped[4], clipped[3]  # swap lf2 <-> rf2
+
+    return clipped
 
 def objective_function(design_vector, generation, id, experiment_id):
     """
     Objective function for CMA-ES optimization.
     Returns negative fitness since CMA-ES minimizes.
     """
-    # Clip to bounds and round to integers
-    clipped_design = clip_to_bounds(design_vector, BOUNDS)
-    rounded_design = tuple(round(x, 0) for x in clipped_design)
 
-    print(f"Evaluating Gen{generation}_ID{id} with design: {np.round(rounded_design).astype(int)}")
+    print(f"Evaluating Gen{generation}_ID{id} with design: {np.round(design_vector).astype(int)}")
 
     # Train the model
     if generation == 1:
-        train_from_scratch(id, rounded_design, generation, experiment_id)
+        train_from_scratch(id, design_vector, generation, experiment_id)
     else:
-        warm_start_train(id, rounded_design, generation, experiment_id)
+        warm_start_train(id, design_vector, generation, experiment_id)
 
     # Evaluate the model
-    fitness, success_rate = evaluate_model(id, rounded_design, generation, experiment_id)
+    fitness, success_rate = evaluate_model(id, design_vector, generation, experiment_id)
 
     print(f"Gen{generation}_ID{id} - Fitness: {fitness:.2f} - Success Rate: {success_rate:.2f}")
 
@@ -394,7 +406,7 @@ def cmaes_optimization(experiment_id):
             actual_fitness = -fitness
             if actual_fitness > global_best_fitness:
                 global_best_fitness = actual_fitness
-                global_best_individual = clip_to_bounds(solution, BOUNDS)
+                global_best_individual = solution
                 global_best_generation = generation
                 global_best_id = i+1
                 print(f"    *** NEW GLOBAL BEST: {actual_fitness:.2f} ***")
@@ -415,7 +427,7 @@ def cmaes_optimization(experiment_id):
 
         # Find best individual in this generation
         best_idx = np.argmax(actual_fitnesses)
-        gen_best_individual = clip_to_bounds(solutions[best_idx], BOUNDS)
+        gen_best_individual = solutions[best_idx]
         gen_best_fitness = actual_fitnesses[best_idx]
         gen_best_id = best_idx
 
@@ -679,7 +691,6 @@ if __name__ == "__main__":
 
     elif OPTION == 4:
         # Option 4: Analyze and visualize best result from each generation
-
         experiment_id = get_next_experiment_id() - 1
 
         files = os.listdir(f"Experiments/{experiment_id}/evolution_data")
@@ -694,7 +705,7 @@ if __name__ == "__main__":
                 best_fitness = data['best_fitness']
                 best_individual = tuple(data['best_individual'])
                 generation = data['generation']
-                best_id = data['best_id']
+                best_id = data['best_id'] + 1
 
                 print("\n" + "=" * 50)
                 print(f"=== Best model from Generation {generation} ===")
