@@ -3,16 +3,14 @@ import pymunk
 import numpy as np
 
 
-from ..objects import Ball, Poly, Floor, Walls
-from ..grippers import Gripper2
-from .. import objects, grippers
-
-from ..sensing import Sensors
+from pymunk_experiments_push.objects import Ball, Poly, Floor, Walls
+from pymunk_experiments_push.grippers import Gripper
+from pymunk_experiments_push import objects, grippers
 
 def game(space, object):
 
     floor = Floor(space, 20)
-    gripper = Gripper2(space)
+    gripper = Gripper(space)
     walls = Walls(space)
 
     while True:
@@ -24,13 +22,13 @@ def game(space, object):
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT:
-                    gripper.arm.body.velocity = (-500, 0)
+                    gripper.arm.body.velocity = (-200, 0)
                 if event.key == pygame.K_RIGHT:
-                    gripper.arm.body.velocity = (500, 0)
+                    gripper.arm.body.velocity = (200, 0)
                 if event.key == pygame.K_UP:
-                    gripper.arm.body.velocity = (0, 500)
+                    gripper.arm.body.velocity = (0, 200)
                 if event.key == pygame.K_DOWN:
-                    gripper.arm.body.velocity = (0, -500)
+                    gripper.arm.body.velocity = (0, -200)
                 # Left finger 1
                 if event.key == pygame.K_q:  # open
                     gripper.left_finger1.body.angle -= 0.1 if gripper.left_finger1.body.angle > -1 else 0.0
@@ -51,14 +49,6 @@ def game(space, object):
                     gripper.right_finger2.body.angle += 0.1 if gripper.right_finger2.body.angle < 0.5 else 0.0
                 if event.key == pygame.K_f:  # close
                     gripper.right_finger2.body.angle -= 0.1 if gripper.right_finger2.body.angle > -1.5 else 0.0
-
-        sensors = Sensors(gripper, object)
-
-        touch_forces = sensors.get_three_segment_forces()
-
-        print("Touch forces:", touch_forces)
-
-
 
 
         # White background

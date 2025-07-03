@@ -3,11 +3,11 @@ import pymunk
 import numpy as np
 
 
-from ..objects import Ball, Poly, Floor, Walls
-from ..grippers import Gripper2
-from .. import objects, grippers
+from pymunk_experiments_scoop.objects import Ball, Poly, Floor, Walls
+from pymunk_experiments_scoop.grippers import Gripper2
+from pymunk_experiments_scoop import objects, grippers
 
-from ..sensing import Sensors
+from pymunk_experiments_scoop.sensing import Sensors
 
 def game(space, object):
 
@@ -52,11 +52,17 @@ def game(space, object):
                 if event.key == pygame.K_f:  # close
                     gripper.right_finger2.body.angle -= 0.1 if gripper.right_finger2.body.angle > -1.5 else 0.0
 
-        sensors = Sensors(gripper, object)
+        # sensors = Sensors(gripper, object)
+        #
+        # touch_forces = sensors.get_three_segment_forces()
+        #
+        # print("Touch forces:", touch_forces)
 
-        touch_forces = sensors.get_three_segment_forces()
 
-        print("Touch forces:", touch_forces)
+
+        r0 = - 10 * abs(gripper.right_finger2.body.angle + 1.5)
+
+        print(r0)
 
 
 

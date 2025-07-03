@@ -3,16 +3,14 @@ import pymunk
 import numpy as np
 
 
-from ..objects import Ball, Poly, Floor, Walls
-from ..grippers import Gripper2
-from .. import objects, grippers
-
-from ..sensing import Sensors
+from pymunk_experiments_reach.objects import Ball, Poly, Floor, Walls
+from pymunk_experiments_reach.grippers import Gripper
+from pymunk_experiments_reach import objects, grippers
 
 def game(space, object):
 
     floor = Floor(space, 20)
-    gripper = Gripper2(space)
+    gripper = Gripper(space)
     walls = Walls(space)
 
     while True:
@@ -24,13 +22,13 @@ def game(space, object):
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT:
-                    gripper.arm.body.velocity = (-500, 0)
+                    gripper.arm.body.velocity = (-200, 0)
                 if event.key == pygame.K_RIGHT:
-                    gripper.arm.body.velocity = (500, 0)
+                    gripper.arm.body.velocity = (200, 0)
                 if event.key == pygame.K_UP:
-                    gripper.arm.body.velocity = (0, 500)
+                    gripper.arm.body.velocity = (0, 200)
                 if event.key == pygame.K_DOWN:
-                    gripper.arm.body.velocity = (0, -500)
+                    gripper.arm.body.velocity = (0, -200)
                 # Left finger 1
                 if event.key == pygame.K_q:  # open
                     gripper.left_finger1.body.angle -= 0.1 if gripper.left_finger1.body.angle > -1 else 0.0
@@ -52,14 +50,6 @@ def game(space, object):
                 if event.key == pygame.K_f:  # close
                     gripper.right_finger2.body.angle -= 0.1 if gripper.right_finger2.body.angle > -1.5 else 0.0
 
-        sensors = Sensors(gripper, object)
-
-        touch_forces = sensors.get_three_segment_forces()
-
-        print("Touch forces:", touch_forces)
-
-
-
 
         # White background
         display.fill((255, 255, 255))
@@ -79,18 +69,9 @@ def game(space, object):
 if __name__ == "__main__":
 
     shapes = {
-        "circle": [],
-        "square": [(-30, -30), (30, -30), (30, 30), (-30, 30)],
-        "right_triangle": [(-30, -30), (30, -30), (30, 30)],
-        "equilateral_triangle": [(-30, -30), (30, -30), (0, 30)],
-        "thin_rod": [(-40, -3), (40, -3), (40, 3), (-40, 3)],
-        "L_shape": [(-30, -30), (10, -30), (10, -10), (30, -10), (30, 30), (-30, 30)],
-        "diamond": [(0, -40), (25, 0), (0, 40), (-25, 0)],  # tall narrow diamond
-        "wide_rectangle": [(-200, -10), (200, -10), (200, 10), (-200, 10)],  # very wide, short
-        "pentagon": [(0, -30), (28, -9), (17, 25), (-17, 25), (-28, -9)]  # irregular pentagon
+        "circle": []
     }
 
-    vertices = [[], [(-30, -30), (30, -30), (30, 30), (-30, 30)] ,[(-30, -30), (30, -30), (30, 30)], [(-30, -30), (30, -30), (0, 30)]]
 
     for name, vertex in shapes.items():
 

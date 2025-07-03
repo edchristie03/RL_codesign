@@ -4,7 +4,7 @@ import pymunk
 
 import gymnasium as gym
 from gymnasium import spaces
-from stable_baselines3.common.callbacks import EvalCallback, BaseCallback, StopTrainingOnNoModelImprovement
+from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv, SubprocVecEnv
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
@@ -13,9 +13,11 @@ from pymunk_experiments.grippers import Gripper2
 from pymunk_experiments.objects import Ball, Floor, Poly, Walls
 from pymunk_experiments import objects, grippers
 
+from pymunk_experiments.sensing import Sensors
+
 class Environment(gym.Env):
 
-    def __init__(self, vertex, training=True, render_mode=None):
+    def __init__(self, vertex, training=True, render_mode=None, design_vector=(200, 120, 120, 120, 120)):
 
         self.render_mode = render_mode
 
@@ -31,21 +33,25 @@ class Environment(gym.Env):
         grippers.display = self.surface
 
         # Define objects in the environment
-        self.gripper = Gripper2(self.space)
+        self.gripper = Gripper2(self.space, design_vector=design_vector)
         self.floor = Floor(self.space, 20)
         self.walls = Walls(self.space)
         self.vertex = vertex
+        self.design_vector = design_vector
+
 
         if self.vertex:
             self.object = Poly(self.space, self.vertex)
         else:
             self.object = Ball(self.space, 30)
 
+        self.sensors = Sensors(self.gripper, self.object)
+
         # Define action space
         self.action_space = spaces.Discrete(13)
 
         # Define 8D (continuous) observation space
-        high = np.array([np.inf] * 45, dtype=np.float32)
+        high = np.array([np.inf] * 41, dtype=np.float32)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # Other simulation parameters
@@ -53,10 +59,6 @@ class Environment(gym.Env):
         self.max_steps = 2500
         self.current_step = 0
         self.training = training
-
-        self.action_history = [0] * 5  # Track last 5 actions
-        self.contact_duration = {'left': 0, 'right': 0}  # Track contact duration
-        self.prev_contacts = {'left': False, 'right': False}
 
     def reset(self, seed=None, options=None):
 
@@ -68,7 +70,7 @@ class Environment(gym.Env):
             self.space.remove(obj)
 
         # Recreate the objects
-        self.gripper = Gripper2(self.space)
+        self.gripper = Gripper2(self.space, design_vector=self.design_vector)
         self.floor = Floor(self.space, radius=20)
         self.walls = Walls(self.space)
 
@@ -84,6 +86,8 @@ class Environment(gym.Env):
         else:
             self.object = Ball(self.space, 30)
 
+        self.sensors = Sensors(self.gripper, self.object)
+
         self.current_step = 0
 
         # initial observation and info
@@ -96,8 +100,8 @@ class Environment(gym.Env):
         pygame.event.pump()
         dx = dy = 0
         move = 200
-        rotation1 = 0.01
-        rotation2 = 0.01
+        rotation1 = 0.005
+        rotation2 = 0.005
 
         if action == 0:     # Move left
             dx = -move
@@ -151,135 +155,50 @@ class Environment(gym.Env):
         base = self.gripper.base.body
         obj = self.object.body
 
-        # 1. OBJECT PROPERTIES (8 features)
-        # Basic object state
-        obj_pos = np.array([obj.position.x, obj.position.y])
-        obj_vel = np.array([obj.velocity.x, obj.velocity.y])
-        obj_orient = np.array([np.cos(obj.angle), np.sin(obj.angle)])
-        obj_ang_vel = obj.angular_velocity
-
-        # Object physical properties
-        obj_mass = obj.mass
-        obj_friction = self.object.shape.friction
-
-        # Object height above floor
-        floor_y = self.floor.shape.a[1] + self.floor.shape.radius
-        obj_height = obj.position.y - floor_y
-
-        # 2. GRIPPER STATE (15 features)
-        base_pos = np.array([base.position.x, base.position.y])
-
-        fingers = [self.gripper.left_finger1.body, self.gripper.left_finger2.body,
-                   self.gripper.right_finger1.body, self.gripper.right_finger2.body]
-
-        finger_angles = np.array([f.angle for f in fingers])
-        finger_ang_vels = np.array([f.angular_velocity for f in fingers])
-
-        # Gripper aperture and fingertip positions
+        # Fingertip positions
         l_tip = self.gripper.left_finger2.body.local_to_world(self.gripper.left_finger2.shape.b)
         r_tip = self.gripper.right_finger2.body.local_to_world(self.gripper.right_finger2.shape.b)
-        gap = np.linalg.norm(l_tip - r_tip)
 
+        # Object relative to base
+        rel_obj_pos = obj.position - base.position
+        rel_obj_vel = obj.velocity - base.velocity
+
+        # Object relative to fingertips
         l_tip_rel = l_tip - obj.position
         r_tip_rel = r_tip - obj.position
 
-        # 3. CONTACT & GRASP QUALITY METRICS (12 features)
-        # Basic contact detection
-        l_collision = self.gripper.left_finger2.shape.shapes_collide(self.object.shape)
-        r_collision = self.gripper.right_finger2.shape.shapes_collide(self.object.shape)
-        l_contact = 1.0 if l_collision.points else 0.0
-        r_contact = 1.0 if r_collision.points else 0.0
+        # Object orientation
+        obj_orient = (np.cos(obj.angle), np.sin(obj.angle))
 
-        # Contact point distances from object COM
-        l_contact_com_dist = 0.0
-        r_contact_com_dist = 0.0
-        if l_collision.points:
-            contact_point = l_collision.points[0]
-            l_contact_com_dist = np.linalg.norm(contact_point.point_a - obj.position)
-        if r_collision.points:
-            contact_point = r_collision.points[0]
-            r_contact_com_dist = np.linalg.norm(contact_point.point_a - obj.position)
+        # Finger Angles and angular velocities
+        fingers = [self.gripper.left_finger1.body, self.gripper.left_finger2.body, self.gripper.right_finger1.body, self.gripper.right_finger2.body]
+        finger_feats = []
+        for j in fingers:
+            finger_feats.extend([np.cos(j.angle), np.sin(j.angle), j.angular_velocity])
 
-        # Distance to object surface for each fingertip
-        l_query = self.object.shape.point_query(l_tip)
-        r_query = self.object.shape.point_query(r_tip)
-        l_surf_dist = max(l_query.distance, 0.0)
-        r_surf_dist = max(r_query.distance, 0.0)
+        # Gap between fingertips
+        gap = np.linalg.norm(l_tip - r_tip) / 200
 
-        # 4. TEMPORAL INFORMATION (7 features)
-        # Update contact duration tracking
-        self.contact_duration['left'] = self.contact_duration['left'] + 1 if l_contact else 0
-        self.contact_duration['right'] = self.contact_duration['right'] + 1 if r_contact else 0
+        # Distance of fingertips to the floor
+        floor_y = self.floor.shape.a[1] + self.floor.shape.radius  # floor y-coordinate
+        l_tip_floor = l_tip.y - floor_y
+        r_tip_floor = r_tip.y - floor_y
 
-        # Contact stability (how long contacts have been maintained)
-        l_contact_duration = self.contact_duration['left']
-        r_contact_duration = self.contact_duration['right']
+        # Three-segment touch forces for each finger
+        touch_forces = self.sensors.get_three_segment_forces()  # Returns 12 values (4 fingers × 3 segments)
 
-        # Recent action history (last 5 actions encoded as frequency)
-        action_freq = np.bincount(self.action_history, minlength=13)[:5]  # Top 5 most common actions
-
-        # 5. GEOMETRIC RELATIONSHIPS (10 features)
-        # More precise finger-to-object positioning
-        obj_to_gripper = obj.position - base.position
-
-        # Angles from object to each fingertip
-        l_tip_angle = np.arctan2(l_tip_rel.y, l_tip_rel.x)
-        r_tip_angle = np.arctan2(r_tip_rel.y, r_tip_rel.x)
-
-        # Distance from each fingertip to object COM
-        l_tip_com_dist = np.linalg.norm(l_tip_rel)
-        r_tip_com_dist = np.linalg.norm(r_tip_rel)
-
-        # Gripper orientation relative to object
-        gripper_obj_angle = np.arctan2(obj_to_gripper.y, obj_to_gripper.x)
-
-        # Gripper alignment with object (how well centered)
-        horizontal_alignment = abs(base.position.x - obj.position.x)
-        vertical_alignment = abs(base.position.y - obj.position.y)
-
-        # 6. TASK-SPECIFIC FEATURES (3 features)
-        above_object = 1.0 if base.position.y > obj.position.y else 0.0
-
-        # Object stability (low velocity indicates stable grasp)
-        obj_stability = 1.0 / (1.0 + np.linalg.norm(obj_vel) + abs(obj_ang_vel))
-
-        # Combine all features
-        obs = np.concatenate([
-            # Object properties
-            obj_pos,  # 2
-            obj_vel,  # 2
-            obj_orient,  # 2
-            [obj_ang_vel],  # 1
-            [obj_mass],  # 1
-            [obj_friction],  # 1
-            [obj_height],  # 1
-
-            # Gripper state
-            base_pos,  # 2
-            finger_angles,  # 4
-            finger_ang_vels,  # 4
-            [gap],  # 1
-
-            # Contact & grasp quality
-            [l_contact, r_contact],  # 2
-            [l_contact_com_dist, r_contact_com_dist],  # 2
-            [l_surf_dist, r_surf_dist],  # 2
-            [l_contact_duration, r_contact_duration],  # 2
-
-            # Temporal info
-            action_freq,  # 5
-
-            # Geometric relationships
-            obj_to_gripper,  # 2
-            [l_tip_angle, r_tip_angle],  # 2
-            [l_tip_com_dist, r_tip_com_dist],  # 2
-            [gripper_obj_angle],  # 1
-            [horizontal_alignment, vertical_alignment],  # 2
-
-            # Task-specific
-            [above_object],  # 1
-            [obj_stability],  # 1
-        ], dtype=np.float32)
+        obs = np.array([ base.position.x, base.position.y,  # 2 values,  # 2 values
+                                l_tip_floor, r_tip_floor,
+                                obj.position.x, obj.position.y,
+                                rel_obj_pos.x, rel_obj_pos.y,
+                                rel_obj_vel.x, rel_obj_vel.y,
+                                *finger_feats,                  # 12 values
+                                l_tip_rel.x, l_tip_rel.y,
+                                r_tip_rel.x, r_tip_rel.y,
+                                gap,
+                                obj_orient[0], obj_orient[1],
+                                *touch_forces
+                                ], dtype=np.float32)
 
         return obs
 
@@ -297,16 +216,27 @@ class Environment(gym.Env):
         l_surf_dist = max(l_query.distance, 0.0)
         r_surf_dist = max(r_query.distance, 0.0)
 
+        # Distance of base to object
+        base_dist = np.linalg.norm(self.gripper.base.body.position - self.object.body.position)
+
+        r0 = 10 if base_dist < 120 else 10 - 10 * np.tanh((base_dist - 120) / 150)
+
         # Reward for distance to surface
         r1 = 10 if l_surf_dist < 20 else 10 - 10 * np.tanh((l_surf_dist - 20) / 100)
         r2 = 10 if r_surf_dist < 20 else 10 - 10 * np.tanh((r_surf_dist - 20) / 100)
 
+        l_collision = self.gripper.left_finger2.shape.shapes_collide(self.object.shape)
+        r_collision = self.gripper.right_finger2.shape.shapes_collide(self.object.shape)
+        l_contact = 1.0 if l_collision.points else 0.0
+        r_contact = 1.0 if r_collision.points else 0.0
+
         # Reward is left tip is touching below COM and right tip is touching above COM (or vice versa)
-        r3 = 10 if ((l_tip[1] < self.object.body.position[1] and obs[21]) and (r_tip[1] > self.object.body.position[1] and obs[22])) \
-                or ((l_tip[1] > self.object.body.position[1] and obs[21]) and (r_tip[1] < self.object.body.position[1] and obs[2])) else 0
+        r3 = 10 if ((l_tip[1] < self.object.body.position[1] and l_contact) and (r_tip[1] > self.object.body.position[1] and r_contact)) \
+                   or ((l_tip[1] > self.object.body.position[1] and l_contact) and (r_tip[1] < self.object.body.position[1] and r_contact)) else 0
 
         # Reward if both tips touching below COM. Either r3 or r4, can't have both
-        r4 = 10 if (l_tip[1] < self.object.body.position[1] and obs[21]) and (r_tip[1] < self.object.body.position[1] and obs[22]) else 0
+        r4 = 10 if (l_tip[1] < self.object.body.position[1] and l_contact) and (
+                    r_tip[1] < self.object.body.position[1] and r_contact) else 0
 
         # Reward based on height of object if under gripper. Diminishes to a max of 100 at the target pickup height
         condition1 = self.object.body.position[1] < self.gripper.base.body.position[1]
@@ -315,19 +245,26 @@ class Environment(gym.Env):
         height_off_floor = self.object.body.position[1] - 100
         norm_height = max(height_off_floor, 0) / (self.pickup_height - 100)
 
-        r6 = 100 * np.tanh(norm_height) if (condition1 and condition2)  else 0
+        r6 = 100 * np.tanh(norm_height) if (condition1 and condition2) else 0
 
-        reward = (r1 + r2 + r3 + r4 + r6)
+        reward = (r0 + r1 + r2 + r3 + r4 + r6)
 
         # Touch Penalties
-        b = 10 if self.gripper.left_finger2.shape.shapes_collide(self.gripper.right_finger1.shape).points else 0.0
-        c = 10 if self.gripper.left_finger1.shape.shapes_collide(self.gripper.right_finger2.shape).points else 0.0
+        a = 10 if self.gripper.left_finger2.shape.shapes_collide(self.gripper.right_finger1.shape).points else 0.0
+        b = 10 if self.gripper.left_finger1.shape.shapes_collide(self.gripper.right_finger2.shape).points else 0.0
 
         # Penalty for fingers touching floor
-        d = 10 if self.gripper.left_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
-        e = 10 if self.gripper.right_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
+        c = 10 if self.gripper.left_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
+        d = 10 if self.gripper.right_finger2.shape.shapes_collide(self.floor.shape).points else 0.0
 
-        reward -= (b + c + d + e)
+        # Penalty for object too fast
+        obj_speed = np.linalg.norm([self.object.body.velocity.x, self.object.body.velocity.y])
+
+        e = 50 if obj_speed > 200 else 0.0
+
+        f = 50 if any(force > 30 for force in obs[-12:]) else 0.0
+
+        reward -= (a+ b + c + d + e + f)
 
         done = False
         success = False
@@ -366,34 +303,6 @@ class Environment(gym.Env):
 
     def close(self):
         pygame.quit()
-
-def make_env(vertex, rank, render=False):
-    """
-    Factory that creates a *fresh* environment in its own process.
-    `rank` is only used if you want per‑worker seeding or logging.
-    """
-
-    def _init():
-        env = Environment(vertex, training=True, render_mode="human" if render else None)
-        env = Monitor(env)  # keeps episode stats
-        return env
-
-    return _init
-
-class SaveBestWithStats(EvalCallback):
-    def __init__(self, *args, vecnormalize, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.vecnormalize = vecnormalize  # the training wrapper
-
-    def _on_step(self) -> bool:
-        # run the usual evaluation logic
-        old_reward = self.best_mean_reward
-        continue_training = super()._on_step()
-
-        if self.best_mean_reward > old_reward:  # new best just saved
-            self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/RL/normalise_stats/vecnormalize_stats_best.pkl")
-
-        return continue_training
 
 class CustomLoggingCallback(BaseCallback):
     """
@@ -471,47 +380,73 @@ class CustomLoggingCallback(BaseCallback):
 
         return True
 
+def make_env(vertex, rank, design_vector, render=False):
+    """Factory that creates a fresh environment in its own process."""
+
+    def _init():
+        env = Environment(vertex, training=True, render_mode="human" if render else None,
+                          design_vector=design_vector)
+        env = Monitor(env)  # keeps episode stats
+        return env
+
+    return _init
+
+class SaveBestWithStats(EvalCallback):
+    def __init__(self, *args, vecnormalize, number=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.vecnormalize = vecnormalize  # the training wrapper
+        self.number = number  # used to save the stats with a unique name
+
+    def _on_step(self) -> bool:
+        # run the usual evaluation logic
+        old_reward = self.best_mean_reward
+        continue_training = super()._on_step()
+
+        if self.best_mean_reward > old_reward:  # new best just saved
+            if self.number is not None:
+                self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/RL_experiments/{self.number}/normalise_stats/vecnormalize_stats_best.pkl")
+            else:
+                self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/RL_experiments/normalise_stats/vecnormalize_stats_best.pkl")
+
+        return continue_training
+
 if __name__ == "__main__":
 
-    N_ENVS = 1  # Number of parallel environments
+    N_ENVS = 8  # Number of parallel environments
 
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
     vertex = [(-30, -30), (30, -30), (0, 30)]
+    design_vector = (200, 120, 120, 120, 120)
 
     # Define the policy network architecture
-    policy_kwargs = {'net_arch': [256, 256], "log_std_init": 2}
+    policy_kwargs = {'net_arch':[256, 256], "log_std_init": 2}
 
-    # Training envs (headless, parallel)
-    train_env = DummyVecEnv([make_env(vertex, i) for i in range(N_ENVS)])
+    train_env = DummyVecEnv([make_env(vertex, i, design_vector) for i in range(N_ENVS)])
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=False)
 
     # Env for saving best model
-    eval_env = DummyVecEnv([make_env(vertex, 0, render=True)])
-    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, training=False)
-    # Copy the observation normalization stats from the training env to the eval env
-    eval_env.obs_rms = train_env.obs_rms
-
-    # Stop training if no model improvement after 10 evaluations
-    stop_callback = StopTrainingOnNoModelImprovement(
-        max_no_improvement_evals=200,
-        min_evals=1,
-        verbose=1
-    )
+    eval_env_fast = DummyVecEnv([make_env(vertex, 0, design_vector, render=True)])
+    eval_env_fast = VecNormalize(eval_env_fast, norm_obs=True, norm_reward=False, training=False)
+    eval_env_fast.obs_rms = train_env.obs_rms
 
     best_ckpt = SaveBestWithStats(
-        eval_env,
+        eval_env_fast,
         vecnormalize=train_env,
-        best_model_save_path=f"pymunk_experiments/gripper2/discrete_control/RL/models/ppo_pymunk_gripper_best",
+        best_model_save_path=f"models",
         n_eval_episodes=5,
-        eval_freq=20_000,
+        eval_freq=10_000,
         deterministic=True,
         render=False,
         verbose=0,
-        callback_after_eval=stop_callback
     )
 
+    # Evaluation env (still a single window so you can watch)
+    eval_env = DummyVecEnv([make_env(vertex, 0, render=True)])
+    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, training=False)
+    eval_env.obs_rms = train_env.obs_rms  # share running stats
+
     # Make callback to run 1 episode every eval_freq steps
-    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=10000000, render=True, verbose=0, deterministic=True)
+    eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=100000, render=True, verbose=0, deterministic=False)
 
     # Instantiate PPO on the train_env, pass the callback to learn()
     model = PPO(
@@ -520,16 +455,15 @@ if __name__ == "__main__":
         n_steps=256,  # 256 × 8 = 2048 steps / update
         batch_size=256,  # must divide N_ENVS × N_STEPS
         verbose=0,
-        tensorboard_log="pymunk_experiments/gripper2/discrete_control/RL/ppo_gripper_tensorboard/",
+        tensorboard_log="./ppo_gripper_tensorboard/",
         policy_kwargs=policy_kwargs,
         ent_coef=0.05,
         learning_rate=1e-3,
     )
 
-    custom_logger = CustomLoggingCallback()
+    # custom_log = CustomLoggingCallback(log_freq=1000, verbose=1)
 
-    model.learn(total_timesteps=3000000, callback=[eval_callback, best_ckpt, custom_logger])
-
+    model.learn(total_timesteps=3000000, callback=[eval_callback, best_ckpt])
     print("Training complete and model saved")
 
     train_env.close()
@@ -537,5 +471,4 @@ if __name__ == "__main__":
 
 
 # tensorboard --logdir ./ppo_gripper_tensorboard/
-#  python -m pymunk_experiments.gripper2.discrete_control.RL.environment
 

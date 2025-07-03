@@ -15,7 +15,7 @@ from pymunk_experiments import objects, grippers
 
 class Environment(gym.Env):
 
-    def __init__(self, vertex, training=True, render_mode=None):
+    def __init__(self, vertex, training=True, render_mode=None, design_vector=(251.0, 161.0, 50.0, 56.0, 163.0)):
 
         self.render_mode = render_mode
 
@@ -31,10 +31,11 @@ class Environment(gym.Env):
         grippers.display = self.surface
 
         # Define objects in the environment
-        self.gripper = Gripper2(self.space)
+        self.gripper = Gripper2(self.space, design_vector=design_vector)
         self.floor = Floor(self.space, 20)
         self.walls = Walls(self.space)
         self.vertex = vertex
+        self.design_vector = design_vector
 
         if self.vertex:
             self.object = Poly(self.space, self.vertex)
@@ -68,7 +69,7 @@ class Environment(gym.Env):
             self.space.remove(obj)
 
         # Recreate the objects
-        self.gripper = Gripper2(self.space)
+        self.gripper = Gripper2(self.space, self.design_vector)
         self.floor = Floor(self.space, radius=20)
         self.walls = Walls(self.space)
 
@@ -338,7 +339,7 @@ class Environment(gym.Env):
             # Reward based on success
             if self.object.body.position.y > self.pickup_height - 100 and (condition1 and condition2):
                 success = True
-                print("Success!")
+
 
         return reward, done, success
 
@@ -367,23 +368,22 @@ class Environment(gym.Env):
     def close(self):
         pygame.quit()
 
-def make_env(vertex, rank, render=False):
-    """
-    Factory that creates a *fresh* environment in its own process.
-    `rank` is only used if you want per‑worker seeding or logging.
-    """
+def make_env(vertex, rank, design_vector, render=False):
+    """Factory that creates a fresh environment in its own process."""
 
     def _init():
-        env = Environment(vertex, training=True, render_mode="human" if render else None)
+        env = Environment(vertex, training=True, render_mode="human" if render else None,
+                          design_vector=design_vector)
         env = Monitor(env)  # keeps episode stats
         return env
 
     return _init
 
 class SaveBestWithStats(EvalCallback):
-    def __init__(self, *args, vecnormalize, **kwargs):
+    def __init__(self, *args, vecnormalize, number=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.vecnormalize = vecnormalize  # the training wrapper
+        self.number = number  # used to save the stats with a unique name
 
     def _on_step(self) -> bool:
         # run the usual evaluation logic
@@ -391,7 +391,10 @@ class SaveBestWithStats(EvalCallback):
         continue_training = super()._on_step()
 
         if self.best_mean_reward > old_reward:  # new best just saved
-            self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/RL/normalise_stats/vecnormalize_stats_best.pkl")
+            if self.number is not None:
+                self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/RL_experiments/{self.number}/normalise_stats/vecnormalize_stats_best.pkl")
+            else:
+                self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/RL_experiments/normalise_stats/vecnormalize_stats_best.pkl")
 
         return continue_training
 
@@ -477,16 +480,17 @@ if __name__ == "__main__":
 
     # This determines the shape of the object to be picked up. If empty, a ball is created with radius 30
     vertex = [(-30, -30), (30, -30), (0, 30)]
+    design_vector = (251.0, 161.0, 50.0, 56.0, 163.0)  # Example design vector for the gripper
 
     # Define the policy network architecture
     policy_kwargs = {'net_arch': [256, 256], "log_std_init": 2}
 
     # Training envs (headless, parallel)
-    train_env = DummyVecEnv([make_env(vertex, i) for i in range(N_ENVS)])
+    train_env = DummyVecEnv([make_env(vertex, i, design_vector) for i in range(N_ENVS)])
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=False)
 
     # Env for saving best model
-    eval_env = DummyVecEnv([make_env(vertex, 0, render=True)])
+    eval_env = DummyVecEnv([make_env(vertex, 0, design_vector, render=True)])
     eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, training=False)
     # Copy the observation normalization stats from the training env to the eval env
     eval_env.obs_rms = train_env.obs_rms
