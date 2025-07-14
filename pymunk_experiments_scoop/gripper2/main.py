@@ -60,7 +60,7 @@ def game(space, object):
 
 
 
-        r0 = - 10 * abs(gripper.right_finger2.body.angle + 1.5)
+        r0 = 10 - 7*abs(gripper.left_finger2.body.angle - 1.5)
 
         print(r0)
 

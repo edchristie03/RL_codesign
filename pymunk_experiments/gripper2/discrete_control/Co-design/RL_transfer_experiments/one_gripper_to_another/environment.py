@@ -392,9 +392,9 @@ class SaveBestWithStats(EvalCallback):
 
         if self.best_mean_reward > old_reward:  # new best just saved
             if self.number is not None:
-                self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/RL_experiments/{self.number}/normalise_stats/vecnormalize_stats_best.pkl")
+                self.vecnormalize.save(f"{self.number}/normalise_stats/vecnormalize_stats_best.pkl")
             else:
-                self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/RL_experiments/normalise_stats/vecnormalize_stats_best.pkl")
+                self.vecnormalize.save(f"pymunk_experiments/gripper2/discrete_control/Co-design/RL_transfer_experiments/one_gripper_to_another/normalise_stats/vecnormalize_stats_best.pkl")
 
         return continue_training
 

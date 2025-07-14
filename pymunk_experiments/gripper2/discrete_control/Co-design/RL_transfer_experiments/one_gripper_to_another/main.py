@@ -2,11 +2,7 @@
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv, SubprocVecEnv
 from stable_baselines3 import PPO
-from ...discrete_control_reward_experiment.environment import make_env, SaveBestWithStats, CustomLoggingCallback
-
-from torchinfo import summary
-import torch
-from torchviz import make_dot
+from environment import make_env, SaveBestWithStats, CustomLoggingCallback
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -51,7 +47,7 @@ def train_from_scratch(vertex, design_vector):
         eval_env,
         vecnormalize=train_env,
         number=1,
-        best_model_save_path=f"pymunk_experiments/gripper2/discrete_control/RL_transfer_experiments/1/models/ppo_pymunk_gripper_best",
+        best_model_save_path=f"1/models/ppo_pymunk_gripper_best",
         n_eval_episodes=5,
         eval_freq=20_000,
         deterministic=True,
@@ -71,7 +67,7 @@ def train_from_scratch(vertex, design_vector):
         n_steps=256,  # 256 × 8 = 2048 steps / update
         batch_size=256,  # must divide N_ENVS × N_STEPS
         verbose=0,
-        tensorboard_log="pymunk_experiments/gripper2/discrete_control/RL_transfer_experiments/ppo_gripper_tensorboard/",
+        tensorboard_log="ppo_gripper_tensorboard/",
         policy_kwargs=policy_kwargs,
         ent_coef=0.05,
         learning_rate=1e-3,
@@ -95,13 +91,13 @@ def train_from_similar(vertex, design_vector):
 
     # Training envs (headless, parallel)
     train_env = DummyVecEnv([make_env(vertex, i, design_vector) for i in range(N_ENVS)])
-    train_env = VecNormalize.load(f"pymunk_experiments/gripper2/discrete_control/RL_transfer_experiments/1/normalise_stats/vecnormalize_stats_best.pkl", train_env)
-    train_env.training = True
+    train_env = VecNormalize.load(f"1/normalise_stats/vecnormalize_stats_best.pkl", train_env)
+    train_env.training = False # Set false to stop updating normalisation stats
 
-    model = PPO.load(f"pymunk_experiments/gripper2/discrete_control/RL_transfer_experiments/1/models/ppo_pymunk_gripper_best/best_model", env=train_env, tensorboard_log="pymunk_experiments/gripper2/discrete_control/RL_transfer_experiments/ppo_gripper_tensorboard/")
+    model = PPO.load(f"1/models/ppo_pymunk_gripper_best/best_model", env=train_env, tensorboard_log="ppo_gripper_tensorboard/")
 
-    # for pg in model.policy.optimizer.param_groups:
-    #     pg['lr'] = 0.00001
+    for pg in model.policy.optimizer.param_groups:
+        pg['lr'] = 1e-4
 
     # Env for saving best model
     eval_env = DummyVecEnv([make_env(vertex, 0, design_vector, render=True)])
@@ -120,7 +116,7 @@ def train_from_similar(vertex, design_vector):
         eval_env,
         vecnormalize=train_env,
         number=2,
-        best_model_save_path=f"pymunk_experiments/gripper2/discrete_control/RL_transfer_experiments/2/models/ppo_pymunk_gripper_best",
+        best_model_save_path=f"2/models/ppo_pymunk_gripper_best",
         n_eval_episodes=5,
         eval_freq=20_000,
         deterministic=True,
@@ -133,7 +129,7 @@ def train_from_similar(vertex, design_vector):
     eval_callback = EvalCallback(eval_env, n_eval_episodes=1, eval_freq=500000, render=True, verbose=0, deterministic=False)
 
     custom_logger = CustomLoggingCallback()
-    param_log = ParameterLogger("pymunk_experiments/gripper2/discrete_control/RL_transfer_experiments/ppo_gripper_tensorboard/", log_freq=10000)
+    param_log = ParameterLogger("ppo_gripper_tensorboard/", log_freq=10000)
 
     model.learn(total_timesteps=3000000, callback=[eval_callback, best_ckpt, custom_logger, param_log])
 
@@ -143,14 +139,13 @@ def train_from_similar(vertex, design_vector):
     eval_env.close()
 
 
-
 if __name__ == "__main__":
 
     vertex = [(-30, -30), (30, -30), (30, 30), (-30, 30)]
 
     design_vector = ((200, 120, 120, 120, 120))  # Example design vector
 
-    train_from_scratch(vertex, design_vector)
+    # train_from_scratch(vertex, design_vector)
 
     print("Training from scratch complete.")
 

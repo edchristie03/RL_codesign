@@ -11,7 +11,7 @@ import os
 from datetime import datetime
 from natsort import natsorted
 
-shape_name, vertex = "Wide_rectangle", [(-200, -10), (200, -10), (200, 10), (-200, 10)]  #"Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] # "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] #
+shape_name, vertex = "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] # "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] #"Wide_rectangle", [(-200, -10), (200, -10), (200, 10), (-200, 10)]  # "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] #
 
 # Evolutionary Algorithm Parameters
 POPULATION_SIZE = 10
@@ -563,7 +563,7 @@ if __name__ == "__main__":
     # Option 3: Just get best model info without running anything
     # Option 4: Analyze and visualize best result from each generation
 
-    OPTION = 4  # Change this to 1, 2, or 3 as needed
+    OPTION = 2  # Change this to 1, 2, or 3 as needed
 
     if OPTION == 1:
         # Run full GA optimization
@@ -573,7 +573,7 @@ if __name__ == "__main__":
         analyze_ga_results(experiment_id)
     elif OPTION == 2:
         # Option 2: Load and test best model from most recent experiment
-        experiment_id = get_next_experiment_id() - 1
+        experiment_id = 1 #get_next_experiment_id() - 1
         if experiment_id < 1:
             print("No experiments found. Run optimization first (OPTION = 1).")
         else:

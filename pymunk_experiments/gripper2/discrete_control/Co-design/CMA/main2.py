@@ -10,7 +10,7 @@ from datetime import datetime
 import cma
 from natsort import natsorted
 
-shape_name, vertex =  "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] # "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] #
+shape_name, vertex =  "Equi Triangle", [(-30, -30), (30, -30), (0, 30)] # "Square", [(-30, -30), (30, -30), (30, 30), (-30, 30)] #
 
 # CMA-ES Parameters
 LAMBDA = 20  # Population size (offspring per generation)
@@ -664,7 +664,7 @@ if __name__ == "__main__":
     # Option 2: Load and test best model after optimization
     # Option 3: Just get best model info without running anything
 
-    OPTION = 4  # Change this to 1, 2, or 3 as needed
+    OPTION = 2  # Change this to 1, 2, or 3 as needed
 
     if OPTION == 1:
         # Run full CMA-ES optimization
